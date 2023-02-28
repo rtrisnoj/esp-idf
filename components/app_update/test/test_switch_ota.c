@@ -12,11 +12,7 @@
 #include "string.h"
 #include "sdkconfig.h"
 
-#if CONFIG_IDF_TARGET_ESP32
-#include "esp32/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32S2
-#include "esp32s2/rom/spi_flash.h"
-#endif
+#include "esp_rom_spiflash.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -25,7 +21,7 @@
 #include "unity.h"
 
 #include "bootloader_common.h"
-#include "../include_bootloader/bootloader_flash_priv.h"
+#include "../bootloader_flash/include/bootloader_flash_priv.h"
 
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -36,9 +32,13 @@
 
 #include "driver/gpio.h"
 #include "esp_sleep.h"
+#include "test_utils.h"
 
 
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+//IDF-5131
 RTC_DATA_ATTR static int boot_count = 0;
+
 static const char *TAG = "ota_test";
 
 /* @brief Copies a current app to next partition using handle.
@@ -49,11 +49,11 @@ static const char *TAG = "ota_test";
 static void copy_app_partition(esp_ota_handle_t update_handle, const esp_partition_t *curr_app)
 {
     const void *partition_bin = NULL;
-    spi_flash_mmap_handle_t  data_map;
+    esp_partition_mmap_handle_t data_map;
     ESP_LOGI(TAG, "start the copy process");
-    TEST_ESP_OK(esp_partition_mmap(curr_app, 0, curr_app->size, SPI_FLASH_MMAP_DATA, &partition_bin, &data_map));
+    TEST_ESP_OK(esp_partition_mmap(curr_app, 0, curr_app->size, ESP_PARTITION_MMAP_DATA, &partition_bin, &data_map));
     TEST_ESP_OK(esp_ota_write(update_handle, (const void *)partition_bin, curr_app->size));
-    spi_flash_munmap(data_map);
+    esp_partition_munmap(data_map);
     ESP_LOGI(TAG, "finish the copy process");
 }
 
@@ -65,15 +65,15 @@ static void copy_app_partition(esp_ota_handle_t update_handle, const esp_partiti
 static void copy_app_partition_with_offset(esp_ota_handle_t update_handle, const esp_partition_t *curr_app)
 {
     const void *partition_bin = NULL;
-    spi_flash_mmap_handle_t  data_map;
+    esp_partition_mmap_handle_t  data_map;
     ESP_LOGI(TAG, "start the copy process");
     uint32_t offset = 0, bytes_to_write = curr_app->size;
     uint32_t write_bytes;
     while (bytes_to_write > 0) {
         write_bytes = (bytes_to_write > (4 * 1024)) ? (4 * 1024) : bytes_to_write;
-        TEST_ESP_OK(esp_partition_mmap(curr_app, offset, write_bytes, SPI_FLASH_MMAP_DATA, &partition_bin, &data_map));
+        TEST_ESP_OK(esp_partition_mmap(curr_app, offset, write_bytes, ESP_PARTITION_MMAP_DATA, &partition_bin, &data_map));
         TEST_ESP_OK(esp_ota_write_with_offset(update_handle, (const void *)partition_bin, write_bytes, offset));
-        spi_flash_munmap(data_map);
+        esp_partition_munmap(data_map);
         bytes_to_write -= write_bytes;
         offset += write_bytes;
     }
@@ -90,11 +90,11 @@ static void copy_app_partition_with_offset(esp_ota_handle_t update_handle, const
 static void copy_partition(const esp_partition_t *dst_partition, const esp_partition_t *src_partition)
 {
     const void *partition_bin = NULL;
-    spi_flash_mmap_handle_t data_map;
-    TEST_ESP_OK(esp_partition_mmap(src_partition, 0, src_partition->size, SPI_FLASH_MMAP_DATA, &partition_bin, &data_map));
+    esp_partition_mmap_handle_t data_map;
+    TEST_ESP_OK(esp_partition_mmap(src_partition, 0, src_partition->size, ESP_PARTITION_MMAP_DATA, &partition_bin, &data_map));
     TEST_ESP_OK(esp_partition_erase_range(dst_partition, 0, dst_partition->size));
     TEST_ESP_OK(esp_partition_write(dst_partition, 0, (const void *)partition_bin, dst_partition->size));
-    spi_flash_munmap(data_map);
+    esp_partition_munmap(data_map);
 }
 #endif
 
@@ -825,6 +825,7 @@ static void test_flow6(void)
 // 3 Stage: run OTA0    -> check it -> erase OTA_DATA for next tests    -> PASS
 TEST_CASE_MULTIPLE_STAGES("Switching between factory, OTA0 using esp_ota_write_with_offset", "[app_update][timeout=90][reset=DEEPSLEEP_RESET, DEEPSLEEP_RESET]", start_test, test_flow6, test_flow6);
 
+//IDF-5145
 TEST_CASE("Test bootloader_common_get_sha256_of_partition returns ESP_ERR_IMAGE_INVALID when image is ivalid", "[partitions]")
 {
     const esp_partition_t *cur_app = esp_ota_get_running_partition();
@@ -846,3 +847,4 @@ TEST_CASE("Test bootloader_common_get_sha256_of_partition returns ESP_ERR_IMAGE_
     TEST_ESP_ERR(ESP_ERR_IMAGE_INVALID, bootloader_common_get_sha256_of_partition(other_app->address, other_app->size, other_app->type, sha_256_other_app));
     TEST_ASSERT_EQUAL_MEMORY_MESSAGE(sha_256_cur_app, sha_256_other_app, sizeof(sha_256_cur_app), "must be the same");
 }
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)

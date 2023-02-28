@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2015-2017 SEGGER Microcontroller GmbH & Co. KG
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 /*********************************************************************
 *                SEGGER Microcontroller GmbH & Co. KG                *
 *                        The Embedded Experts                        *
@@ -137,7 +142,11 @@ static U64 _cbGetTime(void) {
 void SYSVIEW_AddTask(U32 xHandle, const char* pcTaskName, unsigned uxCurrentPriority, U32  pxStack, unsigned uStackHighWaterMark) {
   unsigned n;
 
-  if (memcmp(pcTaskName, "IDLE", 5) == 0) {
+  /* On multi-core we have several idle tasks with 'IDLEx' names
+     Not best solution, because we can filter out user tasks starting with 'IDLE'.
+     But we can not use 'xTaskGetIdleTaskHandle' because at the moment when this
+     function is called array of idle tasks handles are not initialized yet. */
+  if (memcmp(pcTaskName, "IDLE", 4) == 0) {
     return;
   }
 
@@ -171,7 +180,11 @@ void SYSVIEW_AddTask(U32 xHandle, const char* pcTaskName, unsigned uxCurrentPrio
 void SYSVIEW_UpdateTask(U32 xHandle, const char* pcTaskName, unsigned uxCurrentPriority, U32 pxStack, unsigned uStackHighWaterMark) {
   unsigned n;
 
-  if (memcmp(pcTaskName, "IDLE", 5) == 0) {
+  /* On multi-core we have several idle tasks with 'IDLEx' names
+     Not best solution, because we can filter out user tasks starting with 'IDLE'.
+     But we can not use 'xTaskGetIdleTaskHandle' because at the moment when this
+     function is called array of idle tasks handles are not initialized yet. */
+  if (memcmp(pcTaskName, "IDLE", 4) == 0) {
     return;
   }
 
