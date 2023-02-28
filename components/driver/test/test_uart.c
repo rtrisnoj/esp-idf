@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -12,14 +12,12 @@
 #include "esp_system.h"             // for uint32_t esp_random()
 #include "esp_rom_gpio.h"
 #include "soc/uart_periph.h"
-#include "hal/uart_ll.h"
-#include "hal/uart_hal.h"
 
 #define UART_TAG         "Uart"
 #define UART_NUM1        (UART_NUM_1)
 #define BUF_SIZE         (100)
-#define UART1_RX_PIN     (22)
-#define UART1_TX_PIN     (23)
+#define UART1_RX_PIN     (5)
+#define UART1_TX_PIN     (4)
 #define UART_BAUD_11520  (11520)
 #define UART_BAUD_115200 (115200)
 #define TOLERANCE        (0.02)    //baud rate error tolerance 2%.
@@ -32,9 +30,7 @@
 #define PACKETS_NUMBER  (10)
 
 // Wait timeout for uart driver
-#define PACKET_READ_TICS    (1000 / portTICK_RATE_MS)
-
-#define TEST_DEFAULT_CLK UART_SCLK_APB
+#define PACKET_READ_TICS    (1000 / portTICK_PERIOD_MS)
 
 static void uart_config(uint32_t baud_rate, uart_sclk_t source_clk)
 {
@@ -56,7 +52,7 @@ static volatile bool exit_flag;
 
 static void test_task(void *pvParameters)
 {
-    xSemaphoreHandle *sema = (xSemaphoreHandle *) pvParameters;
+    SemaphoreHandle_t *sema = (SemaphoreHandle_t *) pvParameters;
     char* data = (char *) malloc(256);
 
     while (exit_flag == false) {
@@ -82,9 +78,9 @@ static void test_task2(void *pvParameters)
 
 TEST_CASE("test uart_wait_tx_done is not blocked when ticks_to_wait=0", "[uart]")
 {
-    uart_config(UART_BAUD_11520, TEST_DEFAULT_CLK);
+    uart_config(UART_BAUD_11520, UART_SCLK_DEFAULT);
 
-    xSemaphoreHandle exit_sema = xSemaphoreCreateBinary();
+    SemaphoreHandle_t exit_sema = xSemaphoreCreateBinary();
     exit_flag = false;
 
     xTaskCreate(test_task,  "tsk1", 2048, &exit_sema, 5, NULL);
@@ -114,7 +110,7 @@ TEST_CASE("test uart get baud-rate", "[uart]")
 #endif
     uint32_t baud_rate2 = 0;
     printf("init uart%d, unuse reftick, baud rate : %d\n", (int)UART_NUM1, (int)UART_BAUD_115200);
-    uart_config(UART_BAUD_115200, TEST_DEFAULT_CLK);
+    uart_config(UART_BAUD_115200, UART_SCLK_DEFAULT);
     uart_get_baudrate(UART_NUM1, &baud_rate2);
     printf("get  baud rate when don't use reftick: %d\n", (int)baud_rate2);
     TEST_ASSERT_UINT32_WITHIN(UART_BAUD_115200 * TOLERANCE, UART_BAUD_115200, baud_rate2);
@@ -131,10 +127,10 @@ TEST_CASE("test uart tx data with break", "[uart]")
     char *psend = (char *)malloc(buf_len);
     TEST_ASSERT_NOT_NULL(psend);
     memset(psend, '0', buf_len);
-    uart_config(UART_BAUD_115200, TEST_DEFAULT_CLK);
+    uart_config(UART_BAUD_115200, UART_SCLK_DEFAULT);
     printf("Uart%d send %d bytes with break\n", UART_NUM1, send_len);
     uart_write_bytes_with_break(UART_NUM1, (const char *)psend, send_len, brk_len);
-    uart_wait_tx_done(UART_NUM1, (portTickType)portMAX_DELAY);
+    uart_wait_tx_done(UART_NUM1, (TickType_t)portMAX_DELAY);
     //If the code is running here, it means the test passed, otherwise it will crash due to the interrupt wdt timeout.
     printf("Send data with break test passed\n");
     free(psend);
@@ -217,7 +213,7 @@ TEST_CASE("uart general API test", "[uart]")
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = TEST_DEFAULT_CLK,
+        .source_clk = UART_SCLK_DEFAULT,
     };
     uart_param_config(uart_num, &uart_config);
     uart_word_len_set_get_test(uart_num);
@@ -270,7 +266,7 @@ TEST_CASE("uart read write test", "[uart]")
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_CTS_RTS,
-        .source_clk = TEST_DEFAULT_CLK,
+        .source_clk = UART_SCLK_DEFAULT,
         .rx_flow_ctrl_thresh = 120
     };
     TEST_ESP_OK(uart_driver_install(uart_num, BUF_SIZE * 2, 0, 20, NULL, 0));
@@ -339,7 +335,7 @@ TEST_CASE("uart tx with ringbuffer test", "[uart]")
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_CTS_RTS,
         .rx_flow_ctrl_thresh = 120,
-        .source_clk = TEST_DEFAULT_CLK,
+        .source_clk = UART_SCLK_DEFAULT,
     };
     uart_wait_tx_idle_polling(uart_num);
     TEST_ESP_OK(uart_param_config(uart_num, &uart_config));
@@ -353,113 +349,22 @@ TEST_CASE("uart tx with ringbuffer test", "[uart]")
         wr_data[i] = i;
         rd_data[i] = 0;
     }
+
+    size_t tx_buffer_free_space;
+    uart_get_tx_buffer_free_size(uart_num, &tx_buffer_free_space);
+    TEST_ASSERT_EQUAL_INT(2048, tx_buffer_free_space); // full tx buffer space is free
     uart_write_bytes(uart_num, (const char*)wr_data, 1024);
+    uart_get_tx_buffer_free_size(uart_num, &tx_buffer_free_space);
+    TEST_ASSERT_LESS_THAN(2048, tx_buffer_free_space); // tx transmit in progress: tx buffer has content
+    TEST_ASSERT_GREATER_OR_EQUAL(1024, tx_buffer_free_space);
     uart_wait_tx_done(uart_num, (TickType_t)portMAX_DELAY);
+    uart_get_tx_buffer_free_size(uart_num, &tx_buffer_free_space);
+    TEST_ASSERT_EQUAL_INT(2048, tx_buffer_free_space); // tx done: tx buffer back to empty
     uart_read_bytes(uart_num, rd_data, 1024, (TickType_t)1000);
     TEST_ASSERT_EQUAL_HEX8_ARRAY(wr_data, rd_data, 1024);
     TEST_ESP_OK(uart_driver_delete(uart_num));
     free(rd_data);
     free(wr_data);
-}
-
-/* Global variable shared between the ISR and the test function */
-volatile uint32_t uart_isr_happened = 0;
-
-static void uart_custom_isr(void* arg) {
-    (void) arg;
-
-    /* Clear interrupt status and disable TX interrupt here in order to
-     * prevent an infinite call loop. Use the LL function to prevent
-     * entering a critical section from an interrupt. */
-    uart_ll_disable_intr_mask(UART_LL_GET_HW(1), UART_INTR_TXFIFO_EMPTY);
-    uart_clear_intr_status(UART_NUM_1, UART_INTR_TXFIFO_EMPTY);
-
-    /* Mark the interrupt as serviced */
-    uart_isr_happened = 1;
-}
-
-
-/**
- * This function shall always be executed by core 0.
- * This is required by `uart_isr_free`.
- */
-static void uart_test_custom_isr_core0(void* param) {
-    /**
-     * Setup the UART1 and make sure we can register and free a custom ISR
-     */
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity    = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_APB,
-    };
-
-    const uart_port_t uart_echo = UART_NUM_1;
-    const int uart_tx = 4;
-    const int uart_rx = 5;
-    const int buf_size = 256;
-    const int intr_alloc_flags = 0;
-    const char msg[] = "hello world\n";
-    uart_isr_handle_t handle = NULL;
-
-    TEST_ESP_OK(uart_driver_install(uart_echo, buf_size * 2, 0, 0, NULL, intr_alloc_flags));
-    TEST_ESP_OK(uart_param_config(uart_echo, &uart_config));
-    TEST_ESP_OK(uart_set_pin(uart_echo, uart_tx, uart_rx, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-
-    /* Prevent the custom ISR handler from being called if UART_INTR_BRK_DET interrupt occurs.
-     * It shall only be called for TX interrupts. */
-    uart_disable_intr_mask(uart_echo, UART_INTR_BRK_DET);
-
-    /* Unregister the default ISR setup by the function call above */
-    TEST_ESP_OK(uart_isr_free(uart_echo));
-    TEST_ESP_OK(uart_isr_register(uart_echo, uart_custom_isr, NULL, intr_alloc_flags, &handle));
-    /* Set the TX FIFO empty threshold to the size of the message we are sending,
-     * make sure it is never 0 in any case */
-    TEST_ESP_OK(uart_enable_tx_intr(uart_echo, true, MAX(sizeof(msg), 1)));
-    uart_write_bytes(uart_echo, msg, sizeof(msg));
-
-    /* 10ms will be enough to receive the interrupt */
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-
-    /* Make sure the ISR occured */
-    TEST_ASSERT_EQUAL(uart_isr_happened, 1);
-    esp_rom_printf("ISR happened: %d\n", uart_isr_happened);
-    TEST_ESP_OK(uart_isr_free(uart_echo));
-    TEST_ESP_OK(uart_driver_delete(uart_echo));
-
-#if !CONFIG_FREERTOS_UNICORE
-    TaskHandle_t* parent_task = (TaskHandle_t*) param;
-    esp_rom_printf("Notifying caller\n");
-    TEST_ASSERT(xTaskNotify(*parent_task, 0, eNoAction));
-    vTaskDelete(NULL);
-#else
-    (void) param;
-#endif //!CONFIG_FREERTOS_UNICORE
-}
-
-
-TEST_CASE("uart can register and free custom ISRs", "[uart]")
-{
-#if !CONFIG_FREERTOS_UNICORE
-    TaskHandle_t task_handle;
-    TaskHandle_t current_handler = xTaskGetCurrentTaskHandle();
-    /* Run the test on a determianted core, do not allow the core to be changed
-     * as we will manipulate ISRs. */
-    BaseType_t ret = xTaskCreatePinnedToCore(uart_test_custom_isr_core0,
-                                             "uart_test_custom_isr_core0_task",
-                                             2048,
-                                             &current_handler,
-                                             5,
-                                             &task_handle,
-                                             0);
-    TEST_ASSERT(ret);
-    TEST_ASSERT(xTaskNotifyWait(0, 0, NULL, 1000 / portTICK_PERIOD_MS));
-    (void) task_handle;
-#else
-    uart_test_custom_isr_core0(NULL);
-#endif //!CONFIG_FREERTOS_UNICORE
 }
 
 TEST_CASE("uart int state restored after flush", "[uart]")
@@ -475,13 +380,13 @@ TEST_CASE("uart int state restored after flush", "[uart]")
         .parity    = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_APB,
+        .source_clk = UART_SCLK_DEFAULT,
     };
 
     const uart_port_t uart_echo = UART_NUM_1;
     const int uart_tx_signal = U1TXD_OUT_IDX;
-    const int uart_tx = 4;
-    const int uart_rx = 5;
+    const int uart_tx = UART1_TX_PIN;
+    const int uart_rx = UART1_RX_PIN;
     const int buf_size = 256;
     const int intr_alloc_flags = 0;
 
@@ -498,7 +403,7 @@ TEST_CASE("uart int state restored after flush", "[uart]")
     uart_write_bytes(uart_echo, (const char *) data, buf_size);
 
     /* As we set up a loopback, we can read them back on RX */
-    int len = uart_read_bytes(uart_echo, data, buf_size, 1000 / portTICK_RATE_MS);
+    int len = uart_read_bytes(uart_echo, data, buf_size, 1000 / portTICK_PERIOD_MS);
     TEST_ASSERT_EQUAL(len, buf_size);
 
     /* Fill the RX buffer, this should disable the RX interrupts */
@@ -513,7 +418,7 @@ TEST_CASE("uart int state restored after flush", "[uart]")
     uart_flush_input(uart_echo);
     written = uart_write_bytes(uart_echo, (const char *) data, buf_size);
     TEST_ASSERT_NOT_EQUAL(-1, written);
-    len = uart_read_bytes(uart_echo, data, buf_size, 1000 / portTICK_RATE_MS);
+    len = uart_read_bytes(uart_echo, data, buf_size, 1000 / portTICK_PERIOD_MS);
     /* len equals buf_size bytes if interrupts were indeed re-enabled */
     TEST_ASSERT_EQUAL(len, buf_size);
 
@@ -528,7 +433,7 @@ TEST_CASE("uart int state restored after flush", "[uart]")
     uart_flush_input(uart_echo);
     written = uart_write_bytes(uart_echo, (const char *) data, buf_size);
     TEST_ASSERT_NOT_EQUAL(-1, written);
-    len = uart_read_bytes(uart_echo, data, buf_size, 250 / portTICK_RATE_MS);
+    len = uart_read_bytes(uart_echo, data, buf_size, 250 / portTICK_PERIOD_MS);
     TEST_ASSERT_EQUAL(len, 0);
 
     TEST_ESP_OK(uart_driver_delete(uart_echo));

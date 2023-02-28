@@ -1,16 +1,16 @@
 /*
- * SPDX-FileCopyrightText: 2010-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2010-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "sdkconfig.h"
 #include "bootloader_random.h"
-#include "hal/cpu_hal.h"
+#include "esp_cpu.h"
 #include "soc/wdev_reg.h"
 
 #ifndef BOOTLOADER_BUILD
-#include "esp_system.h"
-#include "driver/periph_ctrl.h"
+#include "esp_random.h"
+#include "esp_private/periph_ctrl.h"
 
  __attribute__((weak)) void bootloader_fill_random(void *buffer, size_t length)
 {
@@ -43,10 +43,10 @@
                values.
             */
             random = REG_READ(WDEV_RND_REG);
-            start = cpu_hal_get_cycle_count();
+            start = esp_cpu_get_cycle_count();
             do {
                 random ^= REG_READ(WDEV_RND_REG);
-                now = cpu_hal_get_cycle_count();
+                now = esp_cpu_get_cycle_count();
             } while (now - start < RNG_CPU_WAIT_CYCLE_NUM);
         }
         buffer_bytes[i] = random >> ((i % 4) * 8);

@@ -1046,7 +1046,7 @@ int linenoiseProbe(void) {
     flushWrite();
 
     /* Try to read response */
-    int timeout_ms = 200;
+    int timeout_ms = 300;
     const int retry_ms = 10;
     size_t read_bytes = 0;
     while (timeout_ms > 0 && read_bytes < 4) { // response is ESC[0n or ESC[3n
@@ -1056,6 +1056,10 @@ int linenoiseProbe(void) {
         int cb = read(stdin_fileno, &c, 1);
         if (cb < 0) {
             continue;
+        }
+        if (read_bytes == 0 && c != '\x1b') {
+            /* invalid response */
+            break;
         }
         read_bytes += cb;
     }

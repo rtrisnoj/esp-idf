@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -11,8 +11,8 @@
 #include "driver/spi_master.h"
 #include "driver/spi_slave.h"
 
-#if !DISABLED_FOR_TARGETS(ESP32C3)
-//There is only one GPSPI controller on ESP32C3, so single-board test is disabled.
+#if (TEST_SPI_PERIPH_NUM >= 2)
+//These will only be enabled on chips with 2 or more SPI peripherals
 
 #ifndef MIN
 #define MIN(a, b)((a) > (b)? (b): (a))
@@ -527,10 +527,10 @@ TEST_SPI_LOCAL(MODE, mode_pgroup)
 TEST_CASE("Slave receive correct data", "[spi]")
 {
    // Initialize device handle and spi bus
-    uint32_t master_seed_send = MASTER_DATA_RAND_SEED;
-    uint32_t slave_seed_send = SLAVE_DATA_RAND_SEED;
-    uint32_t master_seed_cmp = slave_seed_send;
-    uint32_t slave_seed_cmp = master_seed_send;
+    unsigned int master_seed_send = MASTER_DATA_RAND_SEED;
+    unsigned int slave_seed_send = SLAVE_DATA_RAND_SEED;
+    unsigned int master_seed_cmp = slave_seed_send;
+    unsigned int slave_seed_cmp = master_seed_send;
 
     const int buf_size = 20;
 
@@ -622,7 +622,7 @@ TEST_CASE("Slave receive correct data", "[spi]")
     }
 }
 
-#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2, ESP32S3, ESP32C3)
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2, ESP32S3, ESP32C3, ESP32C2)
 //These tests are ESP32 only due to lack of runners
 /********************************************************************************
  *      Test By Master & Slave (2 boards)
@@ -661,7 +661,7 @@ static const ptest_func_t slave_test_func = {
 
 #define TEST_SPI_MASTER_SLAVE(name, param_group, extra_tag) \
     PARAM_GROUP_DECLARE(name, param_group) \
-    TEST_MASTER_SLAVE(name, param_group, "[spi_ms][test_env=Example_SPI_Multi_device][timeout=120]"#extra_tag, &master_test_func, &slave_test_func)
+    TEST_MASTER_SLAVE(name, param_group, "[spi_ms][test_env=Example_SPI_Multi_device][timeout=120]"extra_tag, &master_test_func, &slave_test_func)
 
 /************ Master Code ***********************************************/
 static void test_master_init(void** arg)
@@ -1175,6 +1175,6 @@ spitest_param_set_t mode_conf[] = {
 };
 TEST_SPI_MASTER_SLAVE(MODE, mode_conf, "")
 
-#endif // !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2, ESP32S3, ESP32C3)
+#endif // !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2, ESP32S3, ESP32C3, ESP32C2)
 
-#endif // !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C3)
+#endif // #if (TEST_SPI_PERIPH_NUM >= 2)

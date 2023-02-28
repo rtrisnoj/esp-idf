@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2019-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2019-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -22,20 +22,22 @@
 #include "esp_rom_gpio.h"
 #include "esp_rom_efuse.h"
 #include "esp_rom_sys.h"
-#include "esp32s2/rom/cache.h"
-#include "esp32s2/rom/spi_flash.h"
+#include "esp_rom_spiflash.h"
 
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_image_format.h"
 #include "flash_qio_mode.h"
 #include "soc/assist_debug_reg.h"
-#include "soc/cpu.h"
+#include "esp_cpu.h"
 #include "soc/dport_reg.h"
 #include "soc/extmem_reg.h"
 #include "soc/rtc.h"
+#include "soc/rtc_cntl_reg.h"
 #include "soc/spi_periph.h"
 #include "esp_efuse.h"
+#include "hal/mmu_hal.h"
+#include "hal/cache_hal.h"
 
 static const char *TAG = "boot.esp32s2";
 void IRAM_ATTR bootloader_configure_spi_pins(int drv)
@@ -70,18 +72,6 @@ void IRAM_ATTR bootloader_configure_spi_pins(int drv)
     }
 }
 
-static void bootloader_reset_mmu(void)
-{
-    //ToDo: save the autoload value
-    Cache_Suspend_ICache();
-    Cache_Invalidate_ICache_All();
-    Cache_MMU_Init();
-
-    /* normal ROM boot exits with DROM0 cache unmasked,
-    but serial bootloader exits with it masked. */
-    REG_CLR_BIT(EXTMEM_PRO_ICACHE_CTRL1_REG, EXTMEM_PRO_ICACHE_MASK_DROM0);
-}
-
 static void update_flash_config(const esp_image_header_t *bootloader_hdr)
 {
     uint32_t size;
@@ -113,12 +103,12 @@ static void update_flash_config(const esp_image_header_t *bootloader_hdr)
     default:
         size = 2;
     }
-    uint32_t autoload = Cache_Suspend_ICache();
+    cache_hal_disable(CACHE_TYPE_ALL);
     // Set flash chip size
     esp_rom_spiflash_config_param(g_rom_flashchip.device_id, size * 0x100000, 0x10000, 0x1000, 0x100, 0xffff);
     // TODO: set mode
     // TODO: set frequency
-    Cache_Resume_ICache(autoload);
+    cache_hal_enable(CACHE_TYPE_ALL);
 }
 
 static void print_flash_info(const esp_image_header_t *bootloader_hdr)
@@ -131,16 +121,16 @@ static void print_flash_info(const esp_image_header_t *bootloader_hdr)
 
     const char *str;
     switch (bootloader_hdr->spi_speed) {
-    case ESP_IMAGE_SPI_SPEED_40M:
+    case ESP_IMAGE_SPI_SPEED_DIV_2:
         str = "40MHz";
         break;
-    case ESP_IMAGE_SPI_SPEED_26M:
+    case ESP_IMAGE_SPI_SPEED_DIV_3:
         str = "26.7MHz";
         break;
-    case ESP_IMAGE_SPI_SPEED_20M:
+    case ESP_IMAGE_SPI_SPEED_DIV_4:
         str = "20MHz";
         break;
-    case ESP_IMAGE_SPI_SPEED_80M:
+    case ESP_IMAGE_SPI_SPEED_DIV_1:
         str = "80MHz";
         break;
     default:
@@ -315,8 +305,12 @@ esp_err_t bootloader_init(void)
     esp_efuse_init_virtual_mode_in_ram();
 #endif
 #endif
-    // reset MMU
-    bootloader_reset_mmu();
+    // init cache hal
+    cache_hal_init();
+    // reset mmu
+    mmu_hal_init();
+    // Workaround: normal ROM bootloader exits with DROM0 cache unmasked, but 2nd bootloader exits with it masked.
+    REG_CLR_BIT(EXTMEM_PRO_ICACHE_CTRL1_REG, EXTMEM_PRO_ICACHE_MASK_DROM0);
     // config clock
     bootloader_clock_configure();
     // initialize console, from now on, we can use esp_log

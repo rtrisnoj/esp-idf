@@ -18,9 +18,9 @@
 #include "soc/soc_pins.h"
 #include "soc/lldesc.h"
 #include "driver/gpio.h"
-#include "driver/periph_ctrl.h"
+#include "esp_private/periph_ctrl.h"
 #include "esp_heap_caps.h"
-#include "driver/spi_common_internal.h"
+#include "esp_private/spi_common_internal.h"
 #include "stdatomic.h"
 #include "hal/spi_hal.h"
 #include "hal/gpio_hal.h"
@@ -654,7 +654,7 @@ esp_err_t spicommon_bus_initialize_io(spi_host_device_t host, const spi_bus_conf
             gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[bus_config->sclk_io_num], FUNC_GPIO);
         }
 #if SOC_SPI_SUPPORT_OCT
-        if (flags & SPICOMMON_BUSFLAG_OCTAL) {
+        if ((flags & SPICOMMON_BUSFLAG_OCTAL) == SPICOMMON_BUSFLAG_OCTAL) {
             int io_nums[] = {bus_config->data4_io_num, bus_config->data5_io_num, bus_config->data6_io_num, bus_config->data7_io_num};
             uint8_t io_signals[4][2] = {{spi_periph_signal[host].spid4_out, spi_periph_signal[host].spid4_in},
                                         {spi_periph_signal[host].spid5_out, spi_periph_signal[host].spid5_in},
@@ -690,7 +690,9 @@ esp_err_t spicommon_bus_free_io_cfg(const spi_bus_config_t *bus_cfg)
     };
     for (int i = 0; i < sizeof(pin_array)/sizeof(int); i ++) {
         const int io = pin_array[i];
-        if (io >= 0 && GPIO_IS_VALID_GPIO(io)) gpio_reset_pin(io);
+        if (GPIO_IS_VALID_GPIO(io)) {
+            gpio_reset_pin(io);
+        }
     }
     return ESP_OK;
 }
@@ -717,7 +719,7 @@ void spicommon_cs_initialize(spi_host_device_t host, int cs_io_num, int cs_num, 
 
 void spicommon_cs_free_io(int cs_gpio_num)
 {
-    assert(cs_gpio_num>=0 && GPIO_IS_VALID_GPIO(cs_gpio_num));
+    assert(GPIO_IS_VALID_GPIO(cs_gpio_num));
     gpio_reset_pin(cs_gpio_num);
 }
 
@@ -911,11 +913,10 @@ static dmaworkaround_cb_t dmaworkaround_cb;
 static void *dmaworkaround_cb_arg;
 static portMUX_TYPE dmaworkaround_mux = portMUX_INITIALIZER_UNLOCKED;
 static int dmaworkaround_waiting_for_chan = 0;
-#endif
 
 bool IRAM_ATTR spicommon_dmaworkaround_req_reset(int dmachan, dmaworkaround_cb_t cb, void *arg)
 {
-#if CONFIG_IDF_TARGET_ESP32
+
     int otherchan = (dmachan == 1) ? 2 : 1;
     bool ret;
     portENTER_CRITICAL_ISR(&dmaworkaround_mux);
@@ -932,24 +933,15 @@ bool IRAM_ATTR spicommon_dmaworkaround_req_reset(int dmachan, dmaworkaround_cb_t
     }
     portEXIT_CRITICAL_ISR(&dmaworkaround_mux);
     return ret;
-#else
-    //no need to reset
-    return true;
-#endif
 }
 
 bool IRAM_ATTR spicommon_dmaworkaround_reset_in_progress(void)
 {
-#if CONFIG_IDF_TARGET_ESP32
     return (dmaworkaround_waiting_for_chan != 0);
-#else
-    return false;
-#endif
 }
 
 void IRAM_ATTR spicommon_dmaworkaround_idle(int dmachan)
 {
-#if CONFIG_IDF_TARGET_ESP32
     portENTER_CRITICAL_ISR(&dmaworkaround_mux);
     dmaworkaround_channels_busy[dmachan-1] = 0;
     if (dmaworkaround_waiting_for_chan == dmachan) {
@@ -961,14 +953,12 @@ void IRAM_ATTR spicommon_dmaworkaround_idle(int dmachan)
 
     }
     portEXIT_CRITICAL_ISR(&dmaworkaround_mux);
-#endif
 }
 
 void IRAM_ATTR spicommon_dmaworkaround_transfer_active(int dmachan)
 {
-#if CONFIG_IDF_TARGET_ESP32
     portENTER_CRITICAL_ISR(&dmaworkaround_mux);
     dmaworkaround_channels_busy[dmachan-1] = 1;
     portEXIT_CRITICAL_ISR(&dmaworkaround_mux);
-#endif
 }
+#endif //#if CONFIG_IDF_TARGET_ESP32

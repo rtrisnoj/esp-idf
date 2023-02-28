@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2017-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2017-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -24,7 +24,7 @@ static __attribute__((unused)) const char *TAG = "efuse";
 #ifdef CONFIG_BOOTLOADER_APP_SEC_VER_SIZE_EFUSE_FIELD
 #define APP_SEC_VER_SIZE_EFUSE_FIELD CONFIG_BOOTLOADER_APP_SEC_VER_SIZE_EFUSE_FIELD
 #else
-#define APP_SEC_VER_SIZE_EFUSE_FIELD 16 // smallest possible size for all chips
+#define APP_SEC_VER_SIZE_EFUSE_FIELD 4 // smallest possible size for all chips
 #endif
 
 // Reset efuse write registers

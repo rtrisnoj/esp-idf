@@ -12,8 +12,6 @@
 #include "esp_attr.h"
 #include "soc/soc_caps.h"
 
-#if SOC_DEDICATED_GPIO_SUPPORTED
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -76,7 +74,7 @@ esp_err_t dedic_gpio_del_bundle(dedic_gpio_bundle_handle_t bundle);
  *      - ESP_FAIL: Get channel mask failed because of other error
  *
  * @note Each bundle should have at least one mask (in or/and out), based on bundle configuration.
- * @note With the returned mask, user can directly invoke LL function like "cpu_ll_write_dedic_gpio_mask"
+ * @note With the returned mask, user can directly invoke LL function like "dedic_gpio_cpu_ll_write_mask"
  *       or write assembly code with dedicated GPIO instructions, to get better performance on GPIO manipulation.
  */
 esp_err_t dedic_gpio_get_out_mask(dedic_gpio_bundle_handle_t bundle, uint32_t *mask);
@@ -165,5 +163,3 @@ esp_err_t dedic_gpio_bundle_set_interrupt_and_callback(dedic_gpio_bundle_handle_
 #ifdef __cplusplus
 }
 #endif
-
-#endif //SOC_DEDICATED_GPIO_SUPPORTED

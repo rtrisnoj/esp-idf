@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -434,7 +434,8 @@ int test_touch_base_parameter(touch_pad_t pad_num, int meas_time, int slp_time,
     }
 
     TEST_ESP_OK( touch_pad_set_cnt_mode(pad_num, slope, TOUCH_PAD_TIE_OPT_DEFAULT) );
-    TEST_ESP_OK( touch_pad_set_meas_time(slp_time, meas_time) );
+    TEST_ESP_OK( touch_pad_set_measurement_interval(slp_time) );
+    TEST_ESP_OK( touch_pad_set_charge_discharge_times(meas_time) );
     TEST_ESP_OK( touch_pad_set_voltage(vol_h, vol_l, vol_a) );
     TEST_ESP_OK( touch_pad_set_idle_channel_connect(is_conn_gnd) );
     ESP_LOGI(TAG, "meas_time[%d]_slp_time[%d]_vol_h[%d]_vol_l[%d]_vol_a[%d]_slope[%d]_is_conn_gnd[%d]",
@@ -1977,14 +1978,15 @@ static void test_deep_sleep_init(void)
 
 TEST_CASE("Touch Sensor sleep pad wakeup deep sleep test", "[touch][ignore]")
 {
-//TODO: IDF-4813
-#if TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2, ESP32S3)
+//TODO: IDF-5218
+#if TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2)
     abort();
 #endif //TEMPORARY_DISABLED_FOR_TARGETS(..)
     test_deep_sleep_init();
 
     /* Change the work duty of touch sensor to reduce current. */
-    touch_pad_set_meas_time(100, TOUCH_PAD_MEASURE_CYCLE_DEFAULT);
+    touch_pad_set_measurement_interval(100);
+    touch_pad_set_charge_discharge_times(TOUCH_PAD_MEASURE_CYCLE_DEFAULT);
 
     /* Close PD current in deep sleep. */
     RTCCNTL.bias_conf.pd_cur_deep_slp = 1;
@@ -2074,7 +2076,7 @@ void test_touch_slope_debug(int pad_num)
             scope_temp[i] = scope_data[i];
         }
         test_tp_print_to_scope(scope_temp, TEST_TOUCH_CHANNEL);
-        vTaskDelay(SCOPE_DEBUG_FREQ_MS / portTICK_RATE_MS);
+        vTaskDelay(SCOPE_DEBUG_FREQ_MS / portTICK_PERIOD_MS);
     }
 #elif SCOPE_DEBUG_TYPE == 1
     while (1) {
@@ -2088,13 +2090,13 @@ void test_touch_slope_debug(int pad_num)
             scope_temp[i + SCOPE_DEBUG_CHANNEL_MAX / 2] = scope_data[i];
         }
         test_tp_print_to_scope(scope_temp, SCOPE_DEBUG_CHANNEL_MAX);
-        vTaskDelay(SCOPE_DEBUG_FREQ_MS / portTICK_RATE_MS);
+        vTaskDelay(SCOPE_DEBUG_FREQ_MS / portTICK_PERIOD_MS);
     }
 #elif SCOPE_DEBUG_TYPE == 2
     uint32_t status;
     touch_pad_read_benchmark(pad_num, &status);
     while (1) {
-        xQueueReceive(que_touch, &evt, SCOPE_DEBUG_FREQ_MS / portTICK_RATE_MS);
+        xQueueReceive(que_touch, &evt, SCOPE_DEBUG_FREQ_MS / portTICK_PERIOD_MS);
         //read filtered value
         touch_pad_read_raw_data(pad_num, &scope_data[0]);
         touch_pad_read_benchmark(pad_num, &scope_data[1]);

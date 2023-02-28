@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -17,8 +17,9 @@
 #include "driver/spi_master.h"
 #include "esp_serial_slave_link/essl_spi.h"
 
-#if !DISABLED_FOR_TARGETS(ESP32C3)
-//There is only one GPSPI controller on ESP32C3, so single-board test is disabled.
+
+#if (TEST_SPI_PERIPH_NUM >= 2)
+//These will be only enabled on chips with 2 or more SPI peripherals
 
 #if SOC_SPI_SUPPORT_SLAVE_HD_VER2
 #include "driver/spi_slave_hd.h"
@@ -595,15 +596,18 @@ TEST_CASE("test spi slave hd segment mode, master too long", "[spi][spi_slv_hd]"
 }
 
 #endif //SOC_SPI_SUPPORT_SLAVE_HD_VER2
-#endif //#if !DISABLED_FOR_TARGETS(ESP32C3)
+#endif //#if (TEST_SPI_PERIPH_NUM >= 2)
 
-#if !DISABLED_FOR_TARGETS(ESP32, ESP32S2, ESP32S3)
+
+#if (TEST_SPI_PERIPH_NUM == 1)
 #if SOC_SPI_SUPPORT_SLAVE_HD_VER2
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
 //These tests are for chips which only have 1 SPI controller
 /********************************************************************************
  *      Test By Master & Slave (2 boards)
  *
- *      PIN | Master(C3) | Slave (C3) |
+ * Master (C3, C2, H2) && Slave (C3, C2, H2):
+ *      PIN | Master     | Slave      |
  *      ----| ---------  | ---------  |
  *      CS  | 10         | 10         |
  *      CLK | 6          | 6          |
@@ -744,9 +748,7 @@ static void hd_slave(void)
     spi_slave_hd_deinit(TEST_SLAVE_HOST);
 }
 
-
 TEST_CASE_MULTIPLE_DEVICES("SPI Slave HD: segment mode, master sends too long", "[spi_ms][test_env=Example_SPI_Multi_device]", hd_master, hd_slave);
-
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(...)
 #endif  //#if SOC_SPI_SUPPORT_SLAVE_HD_VER2
-
-#endif  //#if !DISABLED_FOR_TARGETS(ESP32, ESP32S2, ESP32S3)
+#endif  //#if (TEST_SPI_PERIPH_NUM == 1)

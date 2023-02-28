@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2020-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2020-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -13,30 +13,30 @@
 #include "esp_rom_efuse.h"
 #include "esp_rom_uart.h"
 #include "esp_rom_sys.h"
+#include "esp_rom_spiflash.h"
 #include "soc/efuse_reg.h"
 #include "soc/gpio_sig_map.h"
 #include "soc/io_mux_reg.h"
 #include "soc/assist_debug_reg.h"
-#include "soc/cpu.h"
+#include "esp_cpu.h"
 #include "soc/rtc.h"
+#include "soc/rtc_cntl_reg.h"
 #include "soc/spi_periph.h"
 #include "soc/extmem_reg.h"
 #include "soc/io_mux_reg.h"
 #include "soc/system_reg.h"
 #include "esp32h2/rom/efuse.h"
-#include "esp32h2/rom/spi_flash.h"
-#include "esp32h2/rom/cache.h"
 #include "esp32h2/rom/ets_sys.h"
-#include "esp32h2/rom/spi_flash.h"
 #include "bootloader_common.h"
 #include "bootloader_init.h"
 #include "bootloader_clock.h"
 #include "bootloader_flash_config.h"
 #include "bootloader_mem.h"
-#include "regi2c_ctrl.h"
 #include "bootloader_console.h"
 #include "bootloader_flash_priv.h"
 #include "bootloader_soc.h"
+#include "hal/mmu_hal.h"
+#include "hal/cache_hal.h"
 
 static const char *TAG = "boot.esp32h2";
 
@@ -72,16 +72,6 @@ void IRAM_ATTR bootloader_configure_spi_pins(int drv)
     }
 }
 
-static void bootloader_reset_mmu(void)
-{
-    Cache_Suspend_ICache();
-    Cache_Invalidate_ICache_All();
-    Cache_MMU_Init();
-
-    REG_CLR_BIT(EXTMEM_ICACHE_CTRL1_REG, EXTMEM_ICACHE_SHUT_IBUS);
-    REG_CLR_BIT(EXTMEM_ICACHE_CTRL1_REG, EXTMEM_ICACHE_SHUT_DBUS);
-}
-
 static void update_flash_config(const esp_image_header_t *bootloader_hdr)
 {
     uint32_t size;
@@ -104,10 +94,10 @@ static void update_flash_config(const esp_image_header_t *bootloader_hdr)
     default:
         size = 2;
     }
-    uint32_t autoload = Cache_Suspend_ICache();
+    cache_hal_disable(CACHE_TYPE_ALL);
     // Set flash chip size
     esp_rom_spiflash_config_param(rom_spiflash_legacy_data->chip.device_id, size * 0x100000, 0x10000, 0x1000, 0x100, 0xffff);    // TODO: set mode
-    Cache_Resume_ICache(autoload);
+    cache_hal_enable(CACHE_TYPE_ALL);
 }
 
 static void print_flash_info(const esp_image_header_t *bootloader_hdr)
@@ -120,20 +110,20 @@ static void print_flash_info(const esp_image_header_t *bootloader_hdr)
 
     const char *str;
     switch (bootloader_hdr->spi_speed) {
-    case ESP_IMAGE_SPI_SPEED_40M:
-        str = "40MHz";
+    case ESP_IMAGE_SPI_SPEED_DIV_2:
+        str = "24MHz";
         break;
-    case ESP_IMAGE_SPI_SPEED_26M:
-        str = "26.7MHz";
+    case ESP_IMAGE_SPI_SPEED_DIV_3:
+        str = "16MHz";
         break;
-    case ESP_IMAGE_SPI_SPEED_20M:
-        str = "20MHz";
+    case ESP_IMAGE_SPI_SPEED_DIV_4:
+        str = "12MHz";
         break;
-    case ESP_IMAGE_SPI_SPEED_80M:
-        str = "80MHz";
+    case ESP_IMAGE_SPI_SPEED_DIV_1:
+        str = "48MHz";
         break;
     default:
-        str = "20MHz";
+        str = "12MHz";
         break;
     }
     ESP_LOGI(TAG, "SPI Speed      : %s", str);
@@ -280,8 +270,10 @@ esp_err_t bootloader_init(void)
     assert(&_data_start <= &_data_end);
     // clear bss section
     bootloader_clear_bss_section();
-    // reset MMU
-    bootloader_reset_mmu();
+    //init cache hal
+    cache_hal_init();   //TODO IDF-4649
+    //reset mmu
+    mmu_hal_init();
     // config clock
     bootloader_clock_configure();
     // initialize console, from now on, we can use esp_log

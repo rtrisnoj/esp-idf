@@ -16,7 +16,7 @@
 #include "esp_rom_sys.h"
 #include "driver/gpio.h"
 #include "driver/sdmmc_host.h"
-#include "driver/periph_ctrl.h"
+#include "esp_private/periph_ctrl.h"
 #include "sdmmc_private.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -270,7 +270,7 @@ esp_err_t sdmmc_host_init(void)
 
     // Reset
     sdmmc_host_reset();
-    ESP_LOGD(TAG, "peripheral version %x, hardware config %08x", SDMMC.verid, SDMMC.hcon);
+    ESP_LOGD(TAG, "peripheral version %"PRIx32", hardware config %08"PRIx32, SDMMC.verid, SDMMC.hcon);
 
     // Clear interrupt status and set interrupt mask to known state
     SDMMC.rintsts.val = 0xffffffff;
@@ -718,6 +718,3 @@ static esp_err_t sdmmc_host_pullup_en_internal(int slot, int width)
     }
     return ESP_OK;
 }
-
-/* Deprecared public function */
-esp_err_t sdmmc_host_pullup_en(int slot, int width) __attribute__((alias("sdmmc_host_pullup_en_internal")));

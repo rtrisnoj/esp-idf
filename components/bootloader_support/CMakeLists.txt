@@ -2,7 +2,7 @@ set(srcs
     "src/bootloader_common.c"
     "src/bootloader_common_loader.c"
     "src/bootloader_clock_init.c"
-    "src/bootloader_flash.c"
+    "bootloader_flash/src/bootloader_flash.c"
     "src/bootloader_mem.c"
     "src/bootloader_random.c"
     "src/bootloader_random_${IDF_TARGET}.c"
@@ -11,14 +11,15 @@ set(srcs
     "src/flash_encrypt.c"
     "src/secure_boot.c"
     "src/flash_partitions.c"
-    "src/flash_qio_mode.c"
-    "src/bootloader_flash_config_${IDF_TARGET}.c"
-    "src/bootloader_efuse_${IDF_TARGET}.c"
+    "bootloader_flash/src/flash_qio_mode.c"
+    "bootloader_flash/src/bootloader_flash_config_${IDF_TARGET}.c"
+    "src/bootloader_efuse.c"
     )
 
 if(BOOTLOADER_BUILD)
-    set(include_dirs "include" "include_bootloader")
-    set(priv_requires micro-ecc spi_flash efuse)
+    set(include_dirs "include" "bootloader_flash/include"
+        "private_include")
+    set(priv_requires micro-ecc spi_flash efuse esp_app_format)
     list(APPEND srcs
     "src/bootloader_init.c"
     "src/bootloader_clock_loader.c"
@@ -33,10 +34,10 @@ if(BOOTLOADER_BUILD)
 else()
     list(APPEND srcs
         "src/idf/bootloader_sha.c")
-    set(include_dirs "include")
-    set(priv_include_dirs "include_bootloader")
+    set(include_dirs "include" "bootloader_flash/include")
+    set(priv_include_dirs "private_include")
     # heap is required for `heap_memory_layout.h` header
-    set(priv_requires spi_flash mbedtls efuse app_update heap)
+    set(priv_requires spi_flash mbedtls efuse heap esp_app_format)
 endif()
 
 if(BOOTLOADER_BUILD)
@@ -54,11 +55,9 @@ if(BOOTLOADER_BUILD)
                              "src/${IDF_TARGET}/secure_boot_secure_features.c")
         endif()
 
-        if(CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME)
-            list(APPEND srcs "src/secure_boot_v2/secure_boot_signatures_bootloader.c")
-        endif()
         if(CONFIG_SECURE_BOOT_V2_ENABLED)
-            list(APPEND srcs "src/secure_boot_v2/secure_boot.c"
+            list(APPEND srcs "src/secure_boot_v2/secure_boot_signatures_bootloader.c"
+                             "src/secure_boot_v2/secure_boot.c"
                              "src/${IDF_TARGET}/secure_boot_secure_features.c")
         endif()
     endif()
@@ -70,6 +69,11 @@ else()
 
         if(CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME)
             list(APPEND srcs "src/secure_boot_v2/secure_boot_signatures_app.c")
+            list(APPEND srcs "src/secure_boot_v2/secure_boot_rsa_signature.c")
+        endif()
+        if(CONFIG_SECURE_SIGNED_APPS_ECDSA_V2_SCHEME)
+            list(APPEND srcs "src/secure_boot_v2/secure_boot_signatures_app.c")
+            list(APPEND srcs "src/secure_boot_v2/secure_boot_ecdsa_signature.c")
         endif()
     endif()
 endif()
@@ -81,6 +85,15 @@ idf_component_register(SRCS "${srcs}"
                     PRIV_INCLUDE_DIRS "${priv_include_dirs}"
                     REQUIRES "${requires}"
                     PRIV_REQUIRES "${priv_requires}")
+
+if(NOT BOOTLOADER_BUILD)
+    if(CONFIG_SECURE_SIGNED_ON_UPDATE)
+        if(CONFIG_SECURE_SIGNED_APPS_ECDSA_SCHEME OR CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME OR
+           CONFIG_SECURE_SIGNED_APPS_ECDSA_V2_SCHEME)
+            target_link_libraries(${COMPONENT_LIB} PRIVATE idf::app_update)
+        endif()
+    endif()
+endif()
 
 if(CONFIG_SECURE_SIGNED_APPS AND (CONFIG_SECURE_BOOT_V1_ENABLED OR CONFIG_SECURE_SIGNED_APPS_ECDSA_SCHEME))
     if(BOOTLOADER_BUILD)
@@ -144,3 +157,5 @@ endif()
 if(BOOTLOADER_BUILD)
     target_link_libraries(${COMPONENT_LIB} INTERFACE "-u abort")
 endif()
+
+target_compile_options(${COMPONENT_LIB} PRIVATE "-Wno-format")

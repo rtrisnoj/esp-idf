@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2020-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2020-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -11,7 +11,7 @@
 int esp_efuse_rtc_calib_get_ver(void)
 {
     uint32_t result = 0;
-    esp_efuse_read_field_blob(ESP_EFUSE_BLOCK2_VERSION, &result, 3);
+    esp_efuse_read_field_blob(ESP_EFUSE_BLK_VERSION_MAJOR, &result, ESP_EFUSE_BLK_VERSION_MAJOR[0]->bit_count); // IDF-5366
     return result;
 }
 
@@ -39,8 +39,9 @@ uint32_t esp_efuse_rtc_calib_get_init_code(int version, uint32_t adc_unit, int a
     return init_code + 1000;    // version 1 logic
 }
 
-esp_err_t esp_efuse_rtc_calib_get_cal_voltage(int version, int atten, uint32_t* out_digi, uint32_t* out_vol_mv)
+esp_err_t esp_efuse_rtc_calib_get_cal_voltage(int version, uint32_t adc_unit, int atten, uint32_t* out_digi, uint32_t* out_vol_mv)
 {
+    (void)adc_unit;    //On esp32c3,  V1 we don't have calibration data for ADC2, using the efuse data of ADC1
     const esp_efuse_desc_t** cal_vol_efuse;
     uint32_t calib_vol_expected_mv;
     if (version != 1) {
@@ -73,9 +74,13 @@ esp_err_t esp_efuse_rtc_calib_get_cal_voltage(int version, int atten, uint32_t* 
     return ESP_OK;
 }
 
-float esp_efuse_rtc_calib_get_cal_temp(int version)
+esp_err_t esp_efuse_rtc_calib_get_tsens_val(float* tsens_cal)
 {
-    assert(version == 1);
+    uint32_t version = esp_efuse_rtc_calib_get_ver();
+    if (version != 1) {
+        *tsens_cal = 0.0;
+        return ESP_ERR_NOT_SUPPORTED;
+    }
     const esp_efuse_desc_t** cal_temp_efuse;
     cal_temp_efuse = ESP_EFUSE_TEMP_CALIB;
     int cal_temp_size = esp_efuse_get_field_size(cal_temp_efuse);
@@ -86,5 +91,6 @@ float esp_efuse_rtc_calib_get_cal_temp(int version)
     assert(err == ESP_OK);
     (void)err;
     // BIT(8) stands for sign: 1: negtive, 0: positive
-    return ((cal_temp & BIT(8)) != 0)? -(uint8_t)cal_temp: (uint8_t)cal_temp;
+    *tsens_cal = ((cal_temp & BIT(8)) != 0)? -(uint8_t)cal_temp: (uint8_t)cal_temp;
+    return ESP_OK;
 }

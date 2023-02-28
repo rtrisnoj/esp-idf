@@ -656,6 +656,7 @@ typedef UINT8 tBTA_SIG_STRENGTH_MASK;
 #define BTA_DM_BLE_DEV_UNPAIRED_EVT     29      /* BLE unpair event */
 #define BTA_DM_SP_KEY_REQ_EVT           30      /* Simple Pairing Passkey request */
 #define BTA_DM_PM_MODE_CHG_EVT          31      /* Mode changed event */
+#define BTA_DM_ACL_LINK_STAT_EVT        32      /* ACL connection status report event */
 
 typedef UINT8 tBTA_DM_SEC_EVT;
 
@@ -819,6 +820,33 @@ typedef struct {
 #endif
 } tBTA_DM_LINK_DOWN;
 
+enum {
+    BTA_ACL_LINK_STAT_CONN_CMPL,
+    BTA_ACL_LINK_STAT_DISCONN_CMPL
+};
+typedef UINT8 tBTA_ACL_LINK_STAT_EVT;
+
+typedef struct {
+    UINT8      status;             /* ACL link connection status */
+    UINT16     handle;             /* ACL connection handle */
+    BD_ADDR    bd_addr;            /* peer bluetooth address */
+} tBTA_DM_ACL_CONN_CMPL_STAT;
+
+typedef struct {
+    UINT8     reason;             /* ACL link disconnection reason */
+    UINT16    handle;             /* ACL connection handle */
+    BD_ADDR   bd_addr;            /* peer bluetooth address */
+} tBTA_DM_ACL_DISCONN_CMPL_STAT;
+
+/* Structure associated with BTA_DM_ACL_LINK_STAT_EVT */
+typedef struct {
+    tBTA_ACL_LINK_STAT_EVT            event;       /* ACL link event */
+    union {
+        tBTA_DM_ACL_CONN_CMPL_STAT     conn_cmpl;
+        tBTA_DM_ACL_DISCONN_CMPL_STAT  disconn_cmpl;
+    } link_act;
+} tBTA_DM_ACL_LINK_STAT;
+
 /* Structure associated with BTA_DM_ROLE_CHG_EVT */
 typedef struct {
     BD_ADDR         bd_addr;            /* BD address peer device. */
@@ -957,6 +985,7 @@ typedef union {
     tBTA_DM_AUTHORIZE           authorize;          /* Authorization request. */
     tBTA_DM_LINK_UP             link_up;            /* ACL connection up event */
     tBTA_DM_LINK_DOWN           link_down;          /* ACL connection down event */
+    tBTA_DM_ACL_LINK_STAT       acl_link_stat;      /* ACL link status event */
     tBTA_DM_BUSY_LEVEL          busy_level;         /* System busy level */
     tBTA_DM_SP_CFM_REQ          cfm_req;            /* user confirm request */
     tBTA_DM_SP_KEY_REQ          key_req;            /* user passkey request */
@@ -1266,37 +1295,40 @@ typedef UINT8 tBTA_DM_PM_ACTION;
 #endif
 
 #ifndef BTA_DM_PM_SNIFF_A2DP_IDX
-#define BTA_DM_PM_SNIFF_A2DP_IDX      BTA_DM_PM_SNIFF
+#define BTA_DM_PM_SNIFF_A2DP_IDX        BTA_DM_PM_SNIFF
+#endif
+
+#ifndef BTA_DM_PM_SNIFF_AVK_IDLE_IDX
+#define BTA_DM_PM_SNIFF_AVK_IDLE_IDX    BTA_DM_PM_SNIFF4
 #endif
 
 #ifndef BTA_DM_PM_SNIFF_JV_IDX
-#define BTA_DM_PM_SNIFF_JV_IDX      BTA_DM_PM_SNIFF
+#define BTA_DM_PM_SNIFF_JV_IDX          BTA_DM_PM_SNIFF
 #endif
 
 #ifndef BTA_DM_PM_SNIFF_HD_IDLE_IDX
-#define BTA_DM_PM_SNIFF_HD_IDLE_IDX   BTA_DM_PM_SNIFF2
+#define BTA_DM_PM_SNIFF_HD_IDLE_IDX     BTA_DM_PM_SNIFF4
 #endif
 
 #ifndef BTA_DM_PM_SNIFF_SCO_OPEN_IDX
-#define BTA_DM_PM_SNIFF_SCO_OPEN_IDX  BTA_DM_PM_SNIFF3
+#define BTA_DM_PM_SNIFF_SCO_OPEN_IDX    BTA_DM_PM_SNIFF3
 #endif
 
 #ifndef BTA_DM_PM_SNIFF_HD_ACTIVE_IDX
-#define BTA_DM_PM_SNIFF_HD_ACTIVE_IDX BTA_DM_PM_SNIFF4
+#define BTA_DM_PM_SNIFF_HD_ACTIVE_IDX   BTA_DM_PM_SNIFF5
 #endif
 
 #ifndef BTA_DM_PM_SNIFF_HH_OPEN_IDX
-#define BTA_DM_PM_SNIFF_HH_OPEN_IDX BTA_DM_PM_SNIFF2
+#define BTA_DM_PM_SNIFF_HH_OPEN_IDX     BTA_DM_PM_SNIFF4
 #endif
 
 #ifndef BTA_DM_PM_SNIFF_HH_ACTIVE_IDX
-#define BTA_DM_PM_SNIFF_HH_ACTIVE_IDX BTA_DM_PM_SNIFF2
+#define BTA_DM_PM_SNIFF_HH_ACTIVE_IDX   BTA_DM_PM_SNIFF4
 #endif
 
 #ifndef BTA_DM_PM_SNIFF_HH_IDLE_IDX
-#define BTA_DM_PM_SNIFF_HH_IDLE_IDX BTA_DM_PM_SNIFF2
+#define BTA_DM_PM_SNIFF_HH_IDLE_IDX     BTA_DM_PM_SNIFF4
 #endif
-
 
 #ifndef BTA_DM_PM_HH_OPEN_DELAY
 #define BTA_DM_PM_HH_OPEN_DELAY 30000
@@ -1331,8 +1363,8 @@ typedef UINT8 tBTA_DM_PM_ACTION;
 #endif
 
 #ifndef BTA_DM_PM_SNIFF2_MAX
-#define BTA_DM_PM_SNIFF2_MAX     54 //180
-#define BTA_DM_PM_SNIFF2_MIN     30 //150
+#define BTA_DM_PM_SNIFF2_MAX     180 //54
+#define BTA_DM_PM_SNIFF2_MIN     150 //30
 #define BTA_DM_PM_SNIFF2_ATTEMPT 4
 #define BTA_DM_PM_SNIFF2_TIMEOUT 1
 #endif
@@ -1345,17 +1377,17 @@ typedef UINT8 tBTA_DM_PM_ACTION;
 #endif
 
 #ifndef BTA_DM_PM_SNIFF4_MAX
-#define BTA_DM_PM_SNIFF4_MAX     18 //54
-#define BTA_DM_PM_SNIFF4_MIN     10 //30
+#define BTA_DM_PM_SNIFF4_MAX     54 //18
+#define BTA_DM_PM_SNIFF4_MIN     30 //10
 #define BTA_DM_PM_SNIFF4_ATTEMPT 4
 #define BTA_DM_PM_SNIFF4_TIMEOUT 1
 #endif
 
 #ifndef BTA_DM_PM_SNIFF5_MAX
-#define BTA_DM_PM_SNIFF5_MAX     36
-#define BTA_DM_PM_SNIFF5_MIN     30
-#define BTA_DM_PM_SNIFF5_ATTEMPT 2
-#define BTA_DM_PM_SNIFF5_TIMEOUT 0
+#define BTA_DM_PM_SNIFF5_MAX     18
+#define BTA_DM_PM_SNIFF5_MIN     10
+#define BTA_DM_PM_SNIFF5_ATTEMPT 4
+#define BTA_DM_PM_SNIFF5_TIMEOUT 1
 #endif
 
 #ifndef BTA_DM_PM_PARK_MAX
@@ -1466,7 +1498,7 @@ typedef struct {
     tBLE_ADDR_TYPE peer_addr_type;
     BD_ADDR peer_addr;
     tBTA_BLE_AFP filter_policy;
-    UINT8 tx_power;
+    INT8 tx_power;
     tBTA_DM_BLE_GAP_PHY primary_phy;
     UINT8 max_skip;
     tBTA_DM_BLE_GAP_PHY secondary_phy;

@@ -8,8 +8,9 @@
 extern "C" {
 #endif
 
+#include "esp_efuse.h"
 
-// md5_digest_table 720eb12a076091cb1a236c15d9fa3308
+// md5_digest_table d006c80095638b5dbdc8649bf7e04dce
 // This file was generated from the file esp_efuse_table.csv. DO NOT CHANGE THIS FILE MANUALLY.
 // If you want to change some fields, you need to change esp_efuse_table.csv file
 // then run `efuse_common_table` or `efuse_custom_table` command it will generate this file.
@@ -83,13 +84,16 @@ extern const esp_efuse_desc_t* ESP_EFUSE_SECURE_BOOT_EN[];
 extern const esp_efuse_desc_t* ESP_EFUSE_SECURE_BOOT_AGGRESSIVE_REVOKE[];
 extern const esp_efuse_desc_t* ESP_EFUSE_FLASH_TPUW[];
 extern const esp_efuse_desc_t* ESP_EFUSE_DIS_DOWNLOAD_MODE[];
-extern const esp_efuse_desc_t* ESP_EFUSE_DIS_LEGACY_SPI_BOOT[];
-extern const esp_efuse_desc_t* ESP_EFUSE_UART_PRINT_CHANNEL[];
-extern const esp_efuse_desc_t* ESP_EFUSE_DIS_USB_DOWNLOAD_MODE[];
+extern const esp_efuse_desc_t* ESP_EFUSE_DIS_DIRECT_BOOT[];
+extern const esp_efuse_desc_t* ESP_EFUSE_DIS_USB_SERIAL_JTAG_ROM_PRINT[];
+extern const esp_efuse_desc_t* ESP_EFUSE_DIS_USB_SERIAL_JTAG_DOWNLOAD_MODE[];
 extern const esp_efuse_desc_t* ESP_EFUSE_ENABLE_SECURITY_DOWNLOAD[];
 extern const esp_efuse_desc_t* ESP_EFUSE_UART_PRINT_CONTROL[];
 extern const esp_efuse_desc_t* ESP_EFUSE_FORCE_SEND_RESUME[];
 extern const esp_efuse_desc_t* ESP_EFUSE_SECURE_VERSION[];
+extern const esp_efuse_desc_t* ESP_EFUSE_ERR_RST_ENABLE[];
+extern const esp_efuse_desc_t* ESP_EFUSE_DISABLE_WAFER_VERSION_MAJOR[];
+extern const esp_efuse_desc_t* ESP_EFUSE_DISABLE_BLK_VERSION_MAJOR[];
 extern const esp_efuse_desc_t* ESP_EFUSE_MAC_FACTORY[];
 extern const esp_efuse_desc_t* ESP_EFUSE_SPI_PAD_CONFIG_CLK[];
 extern const esp_efuse_desc_t* ESP_EFUSE_SPI_PAD_CONFIG_Q_D1[];
@@ -102,11 +106,12 @@ extern const esp_efuse_desc_t* ESP_EFUSE_SPI_PAD_CONFIG_D4[];
 extern const esp_efuse_desc_t* ESP_EFUSE_SPI_PAD_CONFIG_D5[];
 extern const esp_efuse_desc_t* ESP_EFUSE_SPI_PAD_CONFIG_D6[];
 extern const esp_efuse_desc_t* ESP_EFUSE_SPI_PAD_CONFIG_D7[];
-extern const esp_efuse_desc_t* ESP_EFUSE_WAFER_VERSION[];
+extern const esp_efuse_desc_t* ESP_EFUSE_WAFER_VERSION_MINOR[];
 extern const esp_efuse_desc_t* ESP_EFUSE_PKG_VERSION[];
-extern const esp_efuse_desc_t* ESP_EFUSE_BLOCK1_VERSION[];
+extern const esp_efuse_desc_t* ESP_EFUSE_BLK_VERSION_MINOR[];
+extern const esp_efuse_desc_t* ESP_EFUSE_WAFER_VERSION_MAJOR[];
 extern const esp_efuse_desc_t* ESP_EFUSE_OPTIONAL_UNIQUE_ID[];
-extern const esp_efuse_desc_t* ESP_EFUSE_BLOCK2_VERSION[];
+extern const esp_efuse_desc_t* ESP_EFUSE_BLK_VERSION_MAJOR[];
 extern const esp_efuse_desc_t* ESP_EFUSE_TEMP_CALIB[];
 extern const esp_efuse_desc_t* ESP_EFUSE_OCODE[];
 extern const esp_efuse_desc_t* ESP_EFUSE_ADC1_INIT_CODE_ATTEN0[];

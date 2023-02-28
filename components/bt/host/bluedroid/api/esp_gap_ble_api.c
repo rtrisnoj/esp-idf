@@ -1,16 +1,8 @@
-// Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <string.h>
 #include "esp_bt_device.h"
@@ -391,19 +383,6 @@ esp_err_t esp_ble_gap_set_device_name(const char *name)
     return esp_bt_dev_set_device_name(name);
 }
 
-esp_err_t esp_ble_gap_get_device_name(void)
-{
-    btc_msg_t msg = {0};
-
-    ESP_BLUEDROID_STATUS_CHECK(ESP_BLUEDROID_STATUS_ENABLED);
-
-    msg.sig = BTC_SIG_API_CALL;
-    msg.pid = BTC_PID_GAP_BLE;
-    msg.act = BTC_GAP_BLE_ACT_GET_DEV_NAME;
-
-    return (btc_transfer_context(&msg, NULL, 0, NULL, NULL) == BT_STATUS_SUCCESS ? ESP_OK : ESP_FAIL);
-}
-
 esp_err_t esp_ble_gap_get_local_used_addr(esp_bd_addr_t local_used_addr, uint8_t * addr_type)
 {
     if(esp_bluedroid_get_status() != (ESP_BLUEDROID_STATUS_ENABLED)) {
@@ -572,7 +551,7 @@ esp_err_t esp_ble_gap_set_security_param(esp_ble_sm_param_t param_type,
     if((param_type != ESP_BLE_SM_CLEAR_STATIC_PASSKEY) && ( value == NULL || len < sizeof(uint8_t) || len > sizeof(uint32_t))) {
         return ESP_ERR_INVALID_ARG;
     }
-    if(param_type == ESP_BLE_SM_SET_STATIC_PASSKEY) {
+    if((param_type == ESP_BLE_SM_SET_STATIC_PASSKEY)) {
         uint32_t passkey = 0;
         for(uint8_t i = 0; i < len; i++)
         {
@@ -738,38 +717,6 @@ esp_err_t esp_ble_oob_req_reply(esp_bd_addr_t bd_addr, uint8_t *TK, uint8_t len)
                 btc_gap_ble_arg_deep_free) == BT_STATUS_SUCCESS ? ESP_OK : ESP_FAIL);
 }
 
-esp_err_t esp_ble_sc_oob_req_reply(esp_bd_addr_t bd_addr, uint8_t p_c[16], uint8_t p_r[16])
-{
-    if (!p_c || !p_r) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    btc_msg_t msg = {0};
-    btc_ble_gap_args_t arg;
-
-    ESP_BLUEDROID_STATUS_CHECK(ESP_BLUEDROID_STATUS_ENABLED);
-
-    msg.sig = BTC_SIG_API_CALL;
-    msg.pid = BTC_PID_GAP_BLE;
-    msg.act = BTC_GAP_BLE_SC_OOB_REQ_REPLY_EVT;
-    memcpy(arg.sc_oob_req_reply.bd_addr, bd_addr, ESP_BD_ADDR_LEN);
-    arg.sc_oob_req_reply.p_c = p_c;
-    arg.sc_oob_req_reply.p_r = p_r;
-
-    return (btc_transfer_context(&msg, &arg, sizeof(btc_ble_gap_args_t), btc_gap_ble_arg_deep_copy,
-                btc_gap_ble_arg_deep_free) == BT_STATUS_SUCCESS ? ESP_OK : ESP_FAIL);
-}
-
-esp_err_t esp_ble_create_sc_oob_data(void)
-{
-    btc_msg_t msg = {0};
-
-    msg.sig = BTC_SIG_API_CALL;
-    msg.pid = BTC_PID_GAP_BLE;
-    msg.act = BTC_GAP_BLE_SC_CR_OOB_DATA_EVT;
-
-    return (btc_transfer_context(&msg, NULL, 0, NULL, NULL) == BT_STATUS_SUCCESS ? ESP_OK : ESP_FAIL);
-}
 #endif /* #if (SMP_INCLUDED == TRUE) */
 
 esp_err_t esp_ble_gap_disconnect(esp_bd_addr_t remote_device)

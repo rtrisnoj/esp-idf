@@ -174,16 +174,18 @@ esp_err_t esp_console_new_repl_usb_serial_jtag(const esp_console_dev_usb_serial_
     // setup prompt
     esp_console_setup_prompt(repl_config->prompt, &usb_serial_jtag_repl->repl_com);
 
+    /* Fill the structure here as it will be used directly by the created task. */
+    usb_serial_jtag_repl->uart_channel = CONFIG_ESP_CONSOLE_UART_NUM;
+    usb_serial_jtag_repl->repl_com.state = CONSOLE_REPL_STATE_INIT;
+    usb_serial_jtag_repl->repl_com.repl_core.del = esp_console_repl_usb_serial_jtag_delete;
+
     /* spawn a single thread to run REPL */
     if (xTaskCreate(esp_console_repl_task, "console_repl", repl_config->task_stack_size,
-                    &usb_serial_jtag_repl->repl_com, repl_config->task_priority, &usb_serial_jtag_repl->repl_com.task_hdl) != pdTRUE) {
+                    usb_serial_jtag_repl, repl_config->task_priority, &usb_serial_jtag_repl->repl_com.task_hdl) != pdTRUE) {
         ret = ESP_FAIL;
         goto _exit;
     }
 
-    usb_serial_jtag_repl->uart_channel = CONFIG_ESP_CONSOLE_UART_NUM;
-    usb_serial_jtag_repl->repl_com.state = CONSOLE_REPL_STATE_INIT;
-    usb_serial_jtag_repl->repl_com.repl_core.del = esp_console_repl_usb_serial_jtag_delete;
     *ret_repl = &usb_serial_jtag_repl->repl_com.repl_core;
     return ESP_OK;
 _exit:
@@ -225,16 +227,24 @@ esp_err_t esp_console_new_repl_uart(const esp_console_dev_uart_config_t *dev_con
     /* Configure UART. Note that REF_TICK/XTAL is used so that the baud rate remains
      * correct while APB frequency is changing in light sleep mode.
      */
+#if SOC_UART_SUPPORT_REF_TICK
+    uart_sclk_t clk_source = UART_SCLK_REF_TICK;
+    // REF_TICK clock can't provide a high baudrate
+    if (dev_config->baud_rate > 1 * 1000 * 1000) {
+        clk_source = UART_SCLK_DEFAULT;
+        ESP_LOGW(TAG, "light sleep UART wakeup might not work at the configured baud rate");
+    }
+#elif SOC_UART_SUPPORT_XTAL_CLK
+    uart_sclk_t clk_source = UART_SCLK_XTAL;
+#else
+    #error "No UART clock source is aware of DFS"
+#endif // SOC_UART_SUPPORT_xxx
     const uart_config_t uart_config = {
         .baud_rate = dev_config->baud_rate,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
-#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
-        .source_clk = UART_SCLK_REF_TICK,
-#else
-        .source_clk = UART_SCLK_XTAL,
-#endif
+        .source_clk = clk_source,
     };
 
     uart_param_config(dev_config->channel, &uart_config);
@@ -484,9 +494,9 @@ static void esp_console_repl_task(void *args)
     /* This message shall be printed here and not earlier as the stdout
      * has just been set above. */
     printf("\r\n"
-        "Type 'help' to get the list of commands.\r\n"
-        "Use UP/DOWN arrows to navigate through command history.\r\n"
-        "Press TAB when typing command name to auto-complete.\r\n");
+           "Type 'help' to get the list of commands.\r\n"
+           "Use UP/DOWN arrows to navigate through command history.\r\n"
+           "Press TAB when typing command name to auto-complete.\r\n");
 
     if (linenoiseIsDumbMode()) {
         printf("\r\n"

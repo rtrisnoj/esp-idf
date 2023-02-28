@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -8,11 +8,11 @@
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_flash_spi_init.h"
+#include "spi_flash_mmap.h"
 
 #include "test/test_common_spi.h"
 #include "unity.h"
 
-#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3, ESP32C3)
 
 #if CONFIG_IDF_TARGET_ESP32
 // The VSPI pins on UT_T1_ESP_FLASH are connected to a external flash
@@ -23,16 +23,18 @@
 #define TEST_BUS_PIN_NUM_WP     VSPI_IOMUX_PIN_NUM_WP
 #define TEST_BUS_PIN_NUM_HD     VSPI_IOMUX_PIN_NUM_HD
 
-#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
-#define TEST_BUS_PIN_NUM_MISO   FSPI_IOMUX_PIN_NUM_MISO
-#define TEST_BUS_PIN_NUM_MOSI   FSPI_IOMUX_PIN_NUM_MOSI
-#define TEST_BUS_PIN_NUM_CLK    FSPI_IOMUX_PIN_NUM_CLK
-#define TEST_BUS_PIN_NUM_CS     FSPI_IOMUX_PIN_NUM_CS
-#define TEST_BUS_PIN_NUM_WP     FSPI_IOMUX_PIN_NUM_WP
-#define TEST_BUS_PIN_NUM_HD     FSPI_IOMUX_PIN_NUM_HD
+#else
+#define TEST_BUS_PIN_NUM_MISO   SPI2_IOMUX_PIN_NUM_MISO
+#define TEST_BUS_PIN_NUM_MOSI   SPI2_IOMUX_PIN_NUM_MOSI
+#define TEST_BUS_PIN_NUM_CLK    SPI2_IOMUX_PIN_NUM_CLK
+#define TEST_BUS_PIN_NUM_CS     SPI2_IOMUX_PIN_NUM_CS
+#define TEST_BUS_PIN_NUM_WP     SPI2_IOMUX_PIN_NUM_WP
+#define TEST_BUS_PIN_NUM_HD     SPI2_IOMUX_PIN_NUM_HD
 
 #endif
 
+// H2 and C2 will not support external flash.
+#define TEST_FLASH_FREQ_MHZ      5
 
 typedef struct {
     union {
@@ -42,7 +44,7 @@ typedef struct {
     bool finished;
 } task_context_t;
 
-#ifndef CONFIG_ESP32_SPIRAM_SUPPORT
+#if !(CONFIG_SPIRAM && CONFIG_IDF_TARGET_ESP32)
 
 const static char TAG[] = "test_spi";
 
@@ -224,23 +226,19 @@ static void test_bus_lock(bool test_flash)
     devcfg.queue_size = 100;
 
     //Initialize the SPI bus and 3 devices
-    ret=spi_bus_initialize(TEST_SPI_HOST, &buscfg, 1);
-    TEST_ESP_OK(ret);
-    ret=spi_bus_add_device(TEST_SPI_HOST, &devcfg, &context1.handle);
-    TEST_ESP_OK(ret);
-    ret=spi_bus_add_device(TEST_SPI_HOST, &devcfg, &context2.handle);
-    TEST_ESP_OK(ret);
+    TEST_ESP_OK(spi_bus_initialize(TEST_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
+    TEST_ESP_OK(spi_bus_add_device(TEST_SPI_HOST, &devcfg, &context1.handle));
+    TEST_ESP_OK(spi_bus_add_device(TEST_SPI_HOST, &devcfg, &context2.handle));
 
     //only have 3 cs pins, leave one for the flash
     devcfg.spics_io_num = -1;
-    ret=spi_bus_add_device(TEST_SPI_HOST, &devcfg, &context3.handle);
-    TEST_ESP_OK(ret);
+    TEST_ESP_OK(spi_bus_add_device(TEST_SPI_HOST, &devcfg, &context3.handle));
     esp_flash_spi_device_config_t flash_cfg = {
         .host_id = TEST_SPI_HOST,
         .cs_id = 2,
         .cs_io_num = TEST_BUS_PIN_NUM_CS,
         .io_mode = SPI_FLASH_DIO,
-        .speed = ESP_FLASH_5MHZ,
+        .freq_mhz = TEST_FLASH_FREQ_MHZ,
         .input_delay_ns = 0,
     };
 
@@ -284,13 +282,14 @@ static void test_bus_lock(bool test_flash)
     TEST_ESP_OK(spi_bus_free(TEST_SPI_HOST) );
 }
 
-#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2)
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2, ESP32C3, ESP32S3, ESP32C2)
 //no runners
+//IDF-5049
 TEST_CASE("spi bus lock, with flash","[spi][test_env=UT_T1_ESP_FLASH]")
 {
     test_bus_lock(true);
 }
-#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2)
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(...)
 
 
 TEST_CASE("spi bus lock","[spi]")
@@ -298,8 +297,8 @@ TEST_CASE("spi bus lock","[spi]")
     test_bus_lock(false);
 }
 
-#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2)
-//SPI1 not supported by driver
+#if !DISABLED_FOR_TARGETS(ESP32S2, ESP32C3, ESP32S3, ESP32C2, ESP32H2)
+//disable, SPI1 is not available for GPSPI usage on chips later than ESP32
 static IRAM_ATTR esp_err_t test_polling_send(spi_device_handle_t handle)
 {
     for (int i = 0; i < 10; i++) {
@@ -346,10 +345,8 @@ TEST_CASE("spi master can be used on SPI1", "[spi]")
     err = spi_bus_remove_device(handle);
     TEST_ESP_OK(err);
 }
-#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2)
+#endif  //disable, SPI1 is not available for GPSPI usage on chips later than ESP32
 
 //TODO: add a case when a non-polling transaction happened in the bus-acquiring time and then release the bus then queue a new trans
 
-#endif //!CONFIG_ESP32_SPIRAM_SUPPORT
-
-#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3, ESP32C3)
+#endif //!(CONFIG_SPIRAM && CONFIG_IDF_TARGET_ESP32)

@@ -1,22 +1,28 @@
 /*
- * SPDX-FileCopyrightText: 2019-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2019-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "unity.h"
-#include "esp_serial_slave_link/essl_sdio.h"
-#include "driver/sdspi_host.h"
 #include "test_utils.h"
 #include "param_test.h"
 #include "esp_log.h"
-#include "driver/spi_common.h"
+#include "esp_timer.h"
 #include "soc/soc_caps.h"
 #include "ccomp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+#include "driver/spi_common.h"
+#include "driver/sdspi_host.h"
+#include "esp_serial_slave_link/essl_sdio.h"
+#include "sdmmc_cmd.h"
 
 #if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3)
 
 #if SOC_SDMMC_HOST_SUPPORTED && SOC_SDIO_SLAVE_SUPPORTED
+#include "soc/sdio_slave_pins.h"
 #include "driver/sdio_slave.h"
 #include "driver/sdmmc_host.h"
 

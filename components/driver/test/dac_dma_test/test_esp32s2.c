@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -15,7 +15,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "driver/adc.h"
 #include "driver/rtc_io.h"
 #include "driver/gpio.h"
 #include "unity.h"
@@ -182,7 +181,7 @@ void test_dac_dig_dma_intr_check(dac_digi_convert_mode_t mode)
 
     /* Check interrupt type */
     while (int_mask) {
-        TEST_ASSERT_EQUAL( xQueueReceive(que_dac, &evt, 2000 / portTICK_RATE_MS), pdTRUE );
+        TEST_ASSERT_EQUAL( xQueueReceive(que_dac, &evt, 2000 / portTICK_PERIOD_MS), pdTRUE );
         ESP_LOGI(TAG, "DAC-DMA intr type 0x%x", evt.int_msk);
         if (evt.int_msk & int_mask) {
             int_mask &= (~evt.int_msk);
