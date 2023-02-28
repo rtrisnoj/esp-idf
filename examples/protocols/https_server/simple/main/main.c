@@ -19,6 +19,7 @@
 
 #include <esp_https_server.h>
 #include "esp_tls.h"
+#include "sdkconfig.h"
 
 /* A simple example that demonstrates how to create GET and POST
  * handlers and start an HTTPS server.
@@ -36,9 +37,32 @@ static esp_err_t root_get_handler(httpd_req_t *req)
 }
 
 #if CONFIG_EXAMPLE_ENABLE_HTTPS_USER_CALLBACK
+#ifdef CONFIG_ESP_TLS_USING_MBEDTLS
+static void print_peer_cert_info(const mbedtls_ssl_context *ssl)
+{
+    const mbedtls_x509_crt *cert;
+    const size_t buf_size = 1024;
+    char *buf = calloc(buf_size, sizeof(char));
+    if (buf == NULL) {
+        ESP_LOGE(TAG, "Out of memory - Callback execution failed!");
+        return;
+    }
+
+    // Logging the peer certificate info
+    cert = mbedtls_ssl_get_peer_cert(ssl);
+    if (cert != NULL) {
+        mbedtls_x509_crt_info((char *) buf, buf_size - 1, "    ", cert);
+        ESP_LOGI(TAG, "Peer certificate info:\n%s", buf);
+    } else {
+        ESP_LOGW(TAG, "Could not obtain the peer certificate!");
+    }
+
+    free(buf);
+}
+#endif
 /**
  * Example callback function to get the certificate of connected clients,
- * whenever a new SSL connection is created
+ * whenever a new SSL connection is created and closed
  *
  * Can also be used to other information like Socket FD, Connection state, etc.
  *
@@ -49,32 +73,52 @@ static esp_err_t root_get_handler(httpd_req_t *req)
  * The config option is found here - Component config → ESP-TLS
  *
  */
-void https_server_user_callback(esp_https_server_user_cb_arg_t *user_cb)
+static void https_server_user_callback(esp_https_server_user_cb_arg_t *user_cb)
 {
-    ESP_LOGI(TAG, "Session Created!");
-    ESP_LOGI(TAG, "Socket FD: %d", user_cb->tls->sockfd);
+    ESP_LOGI(TAG, "User callback invoked!");
+#ifdef CONFIG_ESP_TLS_USING_MBEDTLS
+    mbedtls_ssl_context *ssl_ctx = NULL;
+#endif
+    switch(user_cb->user_cb_state) {
+        case HTTPD_SSL_USER_CB_SESS_CREATE:
+            ESP_LOGD(TAG, "At session creation");
 
-    const mbedtls_x509_crt *cert;
-    const size_t buf_size = 1024;
-    char *buf = calloc(buf_size, sizeof(char));
-    if (buf == NULL) {
-        ESP_LOGE(TAG, "Out of memory - Callback execution failed!");
-        return;
+            // Logging the socket FD
+            int sockfd = -1;
+            esp_err_t esp_ret;
+            esp_ret = esp_tls_get_conn_sockfd(user_cb->tls, &sockfd);
+            if (esp_ret != ESP_OK) {
+                ESP_LOGE(TAG, "Error in obtaining the sockfd from tls context");
+                break;
+            }
+            ESP_LOGI(TAG, "Socket FD: %d", sockfd);
+#ifdef CONFIG_ESP_TLS_USING_MBEDTLS
+            ssl_ctx = (mbedtls_ssl_context *) esp_tls_get_ssl_context(user_cb->tls);
+            if (ssl_ctx == NULL) {
+                ESP_LOGE(TAG, "Error in obtaining ssl context");
+                break;
+            }
+            // Logging the current ciphersuite
+            ESP_LOGI(TAG, "Current Ciphersuite: %s", mbedtls_ssl_get_ciphersuite(ssl_ctx));
+#endif
+            break;
+
+        case HTTPD_SSL_USER_CB_SESS_CLOSE:
+            ESP_LOGD(TAG, "At session close");
+#ifdef CONFIG_ESP_TLS_USING_MBEDTLS
+            // Logging the peer certificate
+            ssl_ctx = (mbedtls_ssl_context *) esp_tls_get_ssl_context(user_cb->tls);
+            if (ssl_ctx == NULL) {
+                ESP_LOGE(TAG, "Error in obtaining ssl context");
+                break;
+            }
+            print_peer_cert_info(ssl_ctx);
+#endif
+            break;
+        default:
+            ESP_LOGE(TAG, "Illegal state!");
+            return;
     }
-
-    mbedtls_x509_crt_info((char *) buf, buf_size - 1, "    ", &user_cb->tls->servercert);
-    ESP_LOGI(TAG, "Server certificate info:\n%s", buf);
-    memset(buf, 0x00, buf_size);
-
-    cert = mbedtls_ssl_get_peer_cert(&user_cb->tls->ssl);
-    if (cert != NULL) {
-        mbedtls_x509_crt_info((char *) buf, buf_size - 1, "    ", cert);
-        ESP_LOGI(TAG, "Peer certificate info:\n%s", buf);
-    } else {
-        ESP_LOGW(TAG, "Could not obtain the peer certificate!");
-    }
-
-    free(buf);
 }
 #endif
 
@@ -93,10 +137,10 @@ static httpd_handle_t start_webserver(void)
 
     httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
 
-    extern const unsigned char cacert_pem_start[] asm("_binary_cacert_pem_start");
-    extern const unsigned char cacert_pem_end[]   asm("_binary_cacert_pem_end");
-    conf.cacert_pem = cacert_pem_start;
-    conf.cacert_len = cacert_pem_end - cacert_pem_start;
+    extern const unsigned char servercert_start[] asm("_binary_servercert_pem_start");
+    extern const unsigned char servercert_end[]   asm("_binary_servercert_pem_end");
+    conf.servercert = servercert_start;
+    conf.servercert_len = servercert_end - servercert_start;
 
     extern const unsigned char prvtkey_pem_start[] asm("_binary_prvtkey_pem_start");
     extern const unsigned char prvtkey_pem_end[]   asm("_binary_prvtkey_pem_end");
@@ -118,10 +162,10 @@ static httpd_handle_t start_webserver(void)
     return server;
 }
 
-static void stop_webserver(httpd_handle_t server)
+static esp_err_t stop_webserver(httpd_handle_t server)
 {
     // Stop the httpd server
-    httpd_ssl_stop(server);
+    return httpd_ssl_stop(server);
 }
 
 static void disconnect_handler(void* arg, esp_event_base_t event_base,
@@ -129,8 +173,11 @@ static void disconnect_handler(void* arg, esp_event_base_t event_base,
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server) {
-        stop_webserver(*server);
-        *server = NULL;
+        if (stop_webserver(*server) == ESP_OK) {
+            *server = NULL;
+        } else {
+            ESP_LOGE(TAG, "Failed to stop https server");
+        }
     }
 }
 

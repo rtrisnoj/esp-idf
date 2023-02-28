@@ -1,7 +1,6 @@
-
 /*
- * Copyright (c) 2017 Intel Corporation
- * Additional Copyright (c) 2020 Espressif Systems (Shanghai) PTE LTD
+ * SPDX-FileCopyrightText: 2017 Intel Corporation
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -17,7 +16,6 @@
 #endif
 
 #ifdef CONFIG_BT_NIMBLE_ENABLED
-#include "esp_nimble_hci.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -139,8 +137,6 @@ esp_err_t bluetooth_init(void)
         ESP_LOGE(TAG, "Failed to create mesh semaphore");
         return ESP_FAIL;
     }
-
-    ESP_ERROR_CHECK(esp_nimble_hci_and_controller_init());
 
     nimble_port_init();
     /* Initialize the NimBLE host configuration. */

@@ -76,7 +76,7 @@ It performs three GATT operations against the specified peer:
 
 Note :
 
-* Make sure to run `python -m pip install --user -r $IDF_PATH/requirements.txt -r $IDF_PATH/tools/ble/requirements.txt` to install the dependency packages needed.
+* To install the dependency packages needed, please refer to the top level [README file](../../../../README.md#running-test-python-script-ttfw).
 * Currently this Python utility is only supported on Linux (BLE communication is via BLuez + DBus).
 
 ## How to use example
@@ -111,7 +111,7 @@ GAP procedure initiated: advertise; disc_mode=2 adv_channel_map=0 own_addr_type=
 connection established; status=0 handle=1 our_ota_addr_type=0 our_ota_addr=7c:df:a1:40:3e:fa our_id_addr_type=0 our_id_addr=7c:df:a1:40:3e:fa peer_ota_addr_type=0 peer_ota_addr=7c:df:a1:c2:19:92 peer_id_addr_type=0 peer_id_addr=7c:df:a1:c2:19:92 conn_itvl=40 conn_latency=0 supervision_timeout=256 encrypted=0 authenticated=0 bonded=0
 
 I (6924) NimBLE_SPP_BLE_PRPH: Data received in write event,conn_handle = 1,attr_handle = 11
-1b5b41I
+1b5b41I 
 (10824) NimBLE_SPP_BLE_PRPH: Notification sent successfully
 
 ```

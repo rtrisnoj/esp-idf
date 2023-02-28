@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/param.h>
 #include <sys/socket.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -113,36 +114,25 @@ static esp_err_t iperf_start_report(void)
 
 static void socket_recv(int recv_socket, struct sockaddr_storage listen_addr, uint8_t type)
 {
-    bool udp_recv_start = true;
+    bool iperf_recv_start = true;
     uint8_t *buffer;
     int want_recv = 0;
     int actual_recv = 0;
-    socklen_t addr_len = sizeof(struct sockaddr);
+    socklen_t socklen = (s_iperf_ctrl.cfg.type == IPERF_IP_TYPE_IPV6) ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
+    const char *error_log = (type == IPERF_TRANS_TYPE_TCP) ? "tcp server recv" : "udp server recv";
 
     buffer = s_iperf_ctrl.buffer;
     want_recv = s_iperf_ctrl.buffer_len;
-
     while (!s_iperf_ctrl.finish) {
-        if (s_iperf_ctrl.cfg.type == IPERF_IP_TYPE_IPV6) {
-            addr_len = sizeof(struct sockaddr_in6);
-            actual_recv = recvfrom(recv_socket, buffer, want_recv, 0, (struct sockaddr *)&listen_addr, &addr_len);
-        } else if (s_iperf_ctrl.cfg.type == IPERF_IP_TYPE_IPV4) {
-            addr_len = sizeof(struct sockaddr_in);
-            actual_recv = recvfrom(recv_socket, buffer, want_recv, 0, (struct sockaddr *)&listen_addr, &addr_len);
-        }
+        actual_recv = recvfrom(recv_socket, buffer, want_recv, 0, (struct sockaddr *)&listen_addr, &socklen);
         if (actual_recv < 0) {
-            if (type == IPERF_TRANS_TYPE_TCP) {
-                iperf_show_socket_error_reason("tcp server recv", recv_socket);
-            }
-            if (type == IPERF_TRANS_TYPE_UDP) {
-                iperf_show_socket_error_reason("udp server recv", recv_socket);
-            }
+            iperf_show_socket_error_reason(error_log, recv_socket);
             s_iperf_ctrl.finish = true;
             break;
         } else {
-            if (udp_recv_start) {
+            if (iperf_recv_start) {
                 iperf_start_report();
-                udp_recv_start = false;
+                iperf_recv_start = false;
             }
             s_iperf_ctrl.actual_len += actual_recv;
         }
@@ -152,6 +142,8 @@ static void socket_recv(int recv_socket, struct sockaddr_storage listen_addr, ui
 static void socket_send(int send_socket, struct sockaddr_storage dest_addr, uint8_t type, int bw_lim)
 {
     uint8_t *buffer;
+    int32_t *pkt_id_p;
+    int32_t pkt_cnt = 0;
     int actual_send = 0;
     int want_send = 0;
     int period_us = -1;
@@ -159,8 +151,11 @@ static void socket_send(int send_socket, struct sockaddr_storage dest_addr, uint
     int64_t prev_time = 0;
     int64_t send_time = 0;
     int err = 0;
+    const socklen_t socklen = (s_iperf_ctrl.cfg.type == IPERF_IP_TYPE_IPV6) ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
+    const char *error_log = (type == IPERF_TRANS_TYPE_TCP) ? "tcp client send" : "udp client send";
 
     buffer = s_iperf_ctrl.buffer;
+    pkt_id_p = (int32_t *)s_iperf_ctrl.buffer;
     want_send = s_iperf_ctrl.buffer_len;
     iperf_start_report();
 
@@ -184,22 +179,23 @@ static void socket_send(int send_socket, struct sockaddr_storage dest_addr, uint
             }
             prev_time = send_time;
         }
-        if (s_iperf_ctrl.cfg.type == IPERF_IP_TYPE_IPV6) {
-            actual_send = sendto(send_socket, buffer, want_send, 0, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr_in6));
-        } else if (s_iperf_ctrl.cfg.type == IPERF_IP_TYPE_IPV4) {
-            actual_send = sendto(send_socket, buffer, want_send, 0, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr_in));
+        *pkt_id_p = htonl(pkt_cnt); // datagrams need to be sequentially numbered
+        if (pkt_cnt >= INT32_MAX) {
+            pkt_cnt = 0;
         }
+        else {
+            pkt_cnt++;
+        }
+        actual_send = sendto(send_socket, buffer, want_send, 0, (struct sockaddr *)&dest_addr, socklen);
         if (actual_send != want_send) {
             if (type == IPERF_TRANS_TYPE_UDP) {
                 err = iperf_get_socket_error_code(send_socket);
                 // ENOMEM is expected under heavy load => do not print it
                 if (err != ENOMEM) {
-                    iperf_show_socket_error_reason("udp client send", send_socket);
+                    iperf_show_socket_error_reason(error_log, send_socket);
                 }
-            }
-            if (type == IPERF_TRANS_TYPE_TCP) {
-                iperf_show_socket_error_reason("tcp client send", send_socket);
-                ESP_LOGI(TAG, "tcp client send error\n");
+            } else if (type == IPERF_TRANS_TYPE_TCP) {
+                iperf_show_socket_error_reason(error_log, send_socket);
                 break;
             }
         } else {

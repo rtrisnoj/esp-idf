@@ -1,10 +1,8 @@
 /*
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Unlicense OR CC0-1.0
+ */
 
 #include <stdint.h>
 #include <string.h>
@@ -16,17 +14,25 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "bt_app_core.h"
-#include "driver/i2s.h"
 #include "freertos/ringbuf.h"
+#ifdef CONFIG_EXAMPLE_A2DP_SINK_OUTPUT_INTERNAL_DAC
+// DAC DMA mode is only supported by the legacy I2S driver, it will be replaced once DAC has its own DMA dirver
+#include "driver/i2s.h"
+#else
+#include "driver/i2s_std.h"
+#endif
 
 static void bt_app_task_handler(void *arg);
 static bool bt_app_send_msg(bt_app_msg_t *msg);
 static void bt_app_work_dispatched(bt_app_msg_t *msg);
 
-static xQueueHandle s_bt_app_task_queue = NULL;
-static xTaskHandle s_bt_app_task_handle = NULL;
-static xTaskHandle s_bt_i2s_task_handle = NULL;
-static RingbufHandle_t s_ringbuf_i2s = NULL;;
+static QueueHandle_t s_bt_app_task_queue = NULL;
+static TaskHandle_t s_bt_app_task_handle = NULL;
+static TaskHandle_t s_bt_i2s_task_handle = NULL;
+static RingbufHandle_t s_ringbuf_i2s = NULL;
+#ifndef CONFIG_EXAMPLE_A2DP_SINK_OUTPUT_INTERNAL_DAC
+extern i2s_chan_handle_t tx_chan;
+#endif
 
 bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, int param_len, bt_app_copy_cb_t p_copy_cback)
 {
@@ -61,7 +67,7 @@ static bool bt_app_send_msg(bt_app_msg_t *msg)
         return false;
     }
 
-    if (xQueueSend(s_bt_app_task_queue, msg, 10 / portTICK_RATE_MS) != pdTRUE) {
+    if (xQueueSend(s_bt_app_task_queue, msg, 10 / portTICK_PERIOD_MS) != pdTRUE) {
         ESP_LOGE(BT_APP_CORE_TAG, "%s xQueue send failed", __func__);
         return false;
     }
@@ -79,7 +85,7 @@ static void bt_app_task_handler(void *arg)
 {
     bt_app_msg_t msg;
     for (;;) {
-        if (pdTRUE == xQueueReceive(s_bt_app_task_queue, &msg, (portTickType)portMAX_DELAY)) {
+        if (pdTRUE == xQueueReceive(s_bt_app_task_queue, &msg, (TickType_t)portMAX_DELAY)) {
             ESP_LOGD(BT_APP_CORE_TAG, "%s, sig 0x%x, 0x%x", __func__, msg.sig, msg.event);
             switch (msg.sig) {
             case BT_APP_SIG_WORK_DISPATCH:
@@ -123,9 +129,13 @@ static void bt_i2s_task_handler(void *arg)
     size_t bytes_written = 0;
 
     for (;;) {
-        data = (uint8_t *)xRingbufferReceive(s_ringbuf_i2s, &item_size, (portTickType)portMAX_DELAY);
+        data = (uint8_t *)xRingbufferReceive(s_ringbuf_i2s, &item_size, (TickType_t)portMAX_DELAY);
         if (item_size != 0){
+        #ifdef CONFIG_EXAMPLE_A2DP_SINK_OUTPUT_INTERNAL_DAC
             i2s_write(0, data, item_size, &bytes_written, portMAX_DELAY);
+        #else
+            i2s_channel_write(tx_chan, data, item_size, &bytes_written, portMAX_DELAY);
+        #endif
             vRingbufferReturnItem(s_ringbuf_i2s,(void *)data);
         }
     }
@@ -157,7 +167,7 @@ void bt_i2s_task_shut_down(void)
 
 size_t write_ringbuf(const uint8_t *data, size_t size)
 {
-    BaseType_t done = xRingbufferSend(s_ringbuf_i2s, (void *)data, size, (portTickType)portMAX_DELAY);
+    BaseType_t done = xRingbufferSend(s_ringbuf_i2s, (void *)data, size, (TickType_t)portMAX_DELAY);
     if(done){
         return size;
     } else {

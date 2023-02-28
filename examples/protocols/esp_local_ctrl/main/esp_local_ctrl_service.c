@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <sys/param.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -19,8 +20,11 @@
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <esp_local_ctrl.h>
+#ifdef CONFIG_ESP_HTTPS_SERVER_ENABLE
 #include <esp_https_server.h>
-
+#else
+#include <esp_http_server.h>
+#endif
 static const char *TAG = "control";
 
 #define SERVICE_NAME "my_esp_ctrl_device"
@@ -125,7 +129,7 @@ static esp_err_t set_property_values(size_t props_count,
                 break;
             case PROP_TYPE_INT32: {
                     const int32_t *new_value = (const int32_t *) prop_values[i].data;
-                    ESP_LOGI(TAG, "Setting %s value to %d", props[i].name, *new_value);
+                    ESP_LOGI(TAG, "Setting %s value to %" PRId32, props[i].name, *new_value);
                     memcpy(props[i].ctx, new_value, sizeof(int32_t));
                 }
                 break;
@@ -158,30 +162,38 @@ static void free_str(void *arg)
 /* Function used by app_main to start the esp_local_ctrl service */
 void start_esp_local_ctrl_service(void)
 {
+#ifdef CONFIG_ESP_HTTPS_SERVER_ENABLE
     /* Set the configuration */
     httpd_ssl_config_t https_conf = HTTPD_SSL_CONFIG_DEFAULT();
 
     /* Load server certificate */
-    extern const unsigned char cacert_pem_start[] asm("_binary_cacert_pem_start");
-    extern const unsigned char cacert_pem_end[]   asm("_binary_cacert_pem_end");
-    https_conf.cacert_pem = cacert_pem_start;
-    https_conf.cacert_len = cacert_pem_end - cacert_pem_start;
+    extern const unsigned char servercert_start[] asm("_binary_servercert_pem_start");
+    extern const unsigned char servercert_end[]   asm("_binary_servercert_pem_end");
+    https_conf.servercert = servercert_start;
+    https_conf.servercert_len = servercert_end - servercert_start;
 
     /* Load server private key */
     extern const unsigned char prvtkey_pem_start[] asm("_binary_prvtkey_pem_start");
     extern const unsigned char prvtkey_pem_end[]   asm("_binary_prvtkey_pem_end");
     https_conf.prvtkey_pem = prvtkey_pem_start;
     https_conf.prvtkey_len = prvtkey_pem_end - prvtkey_pem_start;
+#else
+    httpd_config_t http_conf = HTTPD_DEFAULT_CONFIG();
+#endif
 
     esp_local_ctrl_config_t config = {
         .transport = ESP_LOCAL_CTRL_TRANSPORT_HTTPD,
         .transport_config = {
-            .httpd = &https_conf
+#ifdef CONFIG_ESP_HTTPS_SERVER_ENABLE
+            .httpd = &https_conf,
+#else
+            .httpd = &http_conf,
+#endif
         },
         .proto_sec = {
             .version = 0,
             .custom_handle = NULL,
-            .pop = NULL,
+            .sec_params = NULL,
         },
         .handlers = {
             /* User defined handler functions */
@@ -273,7 +285,7 @@ void start_esp_local_ctrl_service(void)
     /* Just for fun, let us keep toggling the value
      * of the boolean property2, every 1 second */
     while (1) {
-        vTaskDelay(1000 / portTICK_RATE_MS);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
         prop2_value = !prop2_value;
     }
 }

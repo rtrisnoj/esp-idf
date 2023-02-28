@@ -1,16 +1,10 @@
-// Copyright 2017-2019 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+/*
+ * SPDX-FileCopyrightText: 2017-2021 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+#include <inttypes.h>
 
 #include "esp_timer.h"
 #include "ble_mesh_adapter.h"
@@ -33,8 +27,6 @@ typedef struct {
 static ble_mesh_gen_onoff_state_t gen_onoff_state;
 
 void ble_mesh_register_gen_onoff_client_command(void);
-void ble_mesh_generic_onoff_client_model_cb(esp_ble_mesh_generic_client_cb_event_t event,
-        esp_ble_mesh_generic_client_cb_param_t *param);
 
 void ble_mesh_register_gen_onoff_client(void)
 {
@@ -46,7 +38,7 @@ void ble_mesh_generic_onoff_client_model_cb(esp_ble_mesh_generic_client_cb_event
 {
     uint32_t opcode = param->params->opcode;
 
-    ESP_LOGD(TAG, "enter %s: event is %d, error code is %d, opcode is 0x%x\n",
+    ESP_LOGD(TAG, "enter %s: event is %d, error code is %d, opcode is 0x%" PRIx32,
              __func__, event, param->error_code, opcode);
 
     switch (event) {
@@ -108,6 +100,7 @@ void ble_mesh_generic_onoff_client_model_cb(esp_ble_mesh_generic_client_cb_event
 int ble_mesh_generic_onoff_client_model(int argc, char **argv)
 {
     int err = ESP_OK;
+    esp_ble_mesh_elem_t *element = NULL;
     esp_ble_mesh_generic_client_set_state_t gen_client_set;
     esp_ble_mesh_generic_client_get_state_t gen_client_get;
     esp_ble_mesh_client_common_param_t onoff_common = {
@@ -123,9 +116,16 @@ int ble_mesh_generic_onoff_client_model(int argc, char **argv)
         return 1;
     }
 
-    onoff_common.model = ble_mesh_get_model(ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_CLI);
-    if (onoff_common.model == NULL) {
+    element = esp_ble_mesh_find_element(esp_ble_mesh_get_primary_element_address());
+    if (!element) {
+        ESP_LOGE(TAG, "Element 0x%04x not exists", esp_ble_mesh_get_primary_element_address());
+        return ESP_FAIL;
+    }
+
+    onoff_common.model = esp_ble_mesh_find_sig_model(element, ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_CLI);
+    if (!onoff_common.model) {
         ESP_LOGI(TAG, "GenONOFFClient:LoadModel,Fail");
+        return ESP_FAIL;
     }
 
     arg_int_to_value(gen_onoff_state.appkey_idx, onoff_common.ctx.app_idx, "appkey_index");
@@ -145,11 +145,6 @@ int ble_mesh_generic_onoff_client_model(int argc, char **argv)
         }
         else if (strcmp(gen_onoff_state.action_type->sval[0], "set") == 0) {
             err = esp_ble_mesh_generic_client_set_state(&onoff_common, &gen_client_set);
-        } else if (strcmp(gen_onoff_state.action_type->sval[0], "reg") == 0) {
-            err = esp_ble_mesh_register_generic_client_callback(ble_mesh_generic_onoff_client_model_cb);
-            if (err == ESP_OK) {
-                ESP_LOGI(TAG, "GenONOFFClient:Reg,OK");
-            }
         }
     }
     ESP_LOGD(TAG, "exit %s\n", __func__);

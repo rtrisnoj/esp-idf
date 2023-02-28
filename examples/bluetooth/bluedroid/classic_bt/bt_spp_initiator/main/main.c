@@ -1,10 +1,8 @@
 /*
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Unlicense OR CC0-1.0
+ */
 
 #include <stdint.h>
 #include <string.h>
@@ -33,6 +31,7 @@
 #define SPP_SHOW_MODE SPP_SHOW_SPEED    /*Choose show mode: show data or speed*/
 
 static const esp_spp_mode_t esp_spp_mode = ESP_SPP_MODE_CB;
+static const bool esp_spp_enable_l2cap_ertm = true;
 
 static struct timeval time_new, time_old;
 static long data_num = 0;
@@ -56,7 +55,7 @@ static const uint8_t inq_num_rsps = 0;
 static uint8_t spp_data[SPP_DATA_LEN];
 static uint8_t *s_p_data = NULL; /* data pointer of spp_data */
 
-static char *bda2str(uint8_t *bda, char *str, size_t size)
+static char *bda2str(uint8_t * bda, char *str, size_t size)
 {
     if (bda == NULL || str == NULL || size < 18) {
         return NULL;
@@ -386,7 +385,12 @@ void app_main(void)
         return;
     }
 
-    if ((ret = esp_spp_init(esp_spp_mode)) != ESP_OK) {
+    esp_spp_cfg_t bt_spp_cfg = {
+        .mode = esp_spp_mode,
+        .enable_l2cap_ertm = esp_spp_enable_l2cap_ertm,
+        .tx_buffer_size = 0, /* Only used for ESP_SPP_MODE_VFS mode */
+    };
+    if ((ret = esp_spp_enhanced_init(&bt_spp_cfg)) != ESP_OK) {
         ESP_LOGE(SPP_TAG, "%s spp init failed: %s\n", __func__, esp_err_to_name(ret));
         return;
     }

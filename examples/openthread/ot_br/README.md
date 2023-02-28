@@ -1,3 +1,6 @@
+| Supported Targets | ESP32 | ESP32-C3 | ESP32-S2 | ESP32-S3 |
+| ----------------- | ----- | -------- | -------- | -------- |
+
 # OpenThread Border Router Example
 
 ## Overview
@@ -18,8 +21,8 @@ Connect the two SoCs via UART, below is an example setup with ESP32 DevKitC and 
 
 ESP32 pin | ESP32-H2 pin
 ----------|-------------
-   GND    |      G 
-   GPIO4  |      TX      
+   GND    |      G
+   GPIO4  |      TX
    GPIO5  |      RX
 
 ### Configure the project
@@ -27,8 +30,14 @@ ESP32 pin | ESP32-H2 pin
 ```
 idf.py menuconfig
 ```
+Two ways are provided to setup the Thread Border Router in this example:
 
-You need to configure the `CONFIG_EXAMPLE_WIFI_SSID` and `CONFIG_EXAMPLE_WIFI_PASSWORD` with your access point's ssid and psk.
+- Auto Start
+Enable `OPENTHREAD_BR_AUTO_START`, configure the `CONFIG_EXAMPLE_WIFI_SSID` and `CONFIG_EXAMPLE_WIFI_PASSWORD` with your access point's ssid and psk.
+The device will connect to Wi-Fi and form a Thread network automatically after bootup.
+
+- Manual mode
+Disable `OPENTHREAD_BR_AUTO_START` and enable `OPENTHREAD_CLI_ESP_EXTENSION`. `wifi` command will be added for connecting the device to the Wi-Fi network.
 
 ### Build, Flash, and Run
 
@@ -37,6 +46,58 @@ Build the project and flash it to the board, then run monitor tool to view seria
 ```
 idf.py -p PORT build flash monitor
 ```
+If the `OPENTHREAD_BR_AUTO_START` option is enabled, The device will be connected to the configured Wi-Fi and Thread network automatically then act as the border router.
+
+Otherwise, you need to manually configure the networks with CLI commands.
+
+`wifi` command can be used to configure the Wi-Fi network.
+
+```bash
+> wifi
+--wifi parameter---
+connect
+-s                   :     wifi ssid
+-p                   :     wifi psk
+---example---
+join a wifi:
+ssid: threadcertAP
+psk: threadcertAP    :     wifi connect -s threadcertAP -p threadcertAP
+state                :     get wifi state, disconnect or connect
+---example---
+get wifi state       :     wifi state
+Done
+```
+
+To join a Wi-Fi network, please use the `wifi connect` command:
+
+```bash
+> wifi connect -s threadcertAP -p threadcertAP
+ssid: threadcertAP
+psk: threadcertAP
+I (11331) wifi:wifi driver task: 3ffd06e4, prio:23, stack:6656, core=0
+I (11331) system_api: Base MAC address is not set
+I (11331) system_api: read default base MAC address from EFUSE
+I (11341) wifi:wifi firmware version: 45c46a4
+I (11341) wifi:wifi certification version: v7.0
+
+
+..........
+
+I (13741) esp_netif_handlers: sta ip: 192.168.3.10, mask: 255.255.255.0, gw: 192.168.3.1
+W (13771) wifi:<ba-add>idx:0 (ifx:0, 02:0f:c1:32:3b:2b), tid:0, ssn:2, winSize:64
+wifi sta is connected successfully
+Done
+```
+
+To get the state of the Wi-Fi network:
+
+```bash
+> wifi state
+connected
+Done
+```
+
+For forming the Thread network, please refer to the [ot_cli_README](../ot_cli/README.md).
 
 ## Example Output
 
@@ -56,12 +117,9 @@ I(8139) OPENTHREAD:[NOTE]-MLE-----: Allocate router id 50
 I(8139) OPENTHREAD:[NOTE]-MLE-----: RLOC16 fffe -> c800
 I(8159) OPENTHREAD:[NOTE]-MLE-----: Role Detached -> Leader
 ```
-
-The device will automatically connect to the configured Wi-Fi and Thread network and act as the border router.
-
 ## Using the border agent feature
 
-You need to ot-commissioner on the host machine and another Thread end device running OpenThread cli.
+You need to build ot-commissioner on the host machine and another Thread end device running OpenThread cli.
 
 You can find the guide to build and run ot-commissioner [here](https://openthread.io/guides/commissioner/build).
 
@@ -176,16 +234,16 @@ sudo sysctl -w net/ipv6/conf/wlan0/accept_ra_rt_info_max_plen=128
 For mobile devices, the route table rules will be automatically configured after iOS 14 and Android 8.1.
 
 
-### Testing IPv6 connectivity 
+### Testing IPv6 connectivity
 
 Now in the joining device, check the IP addresses:
 
 ```
-> ipaddr                                                              
+> ipaddr
 fde6:75ff:def4:3bc3:9e9e:3ef:4245:28b5
-fdde:ad00:beef:0:0:ff:fe00:c402                                       
+fdde:ad00:beef:0:0:ff:fe00:c402
 fdde:ad00:beef:0:ad4a:9a9a:3cd6:e423
-fe80:0:0:0:f011:2951:569e:9c4a                                        
+fe80:0:0:0:f011:2951:569e:9c4a
 ```
 
 You'll notice an IPv6 global prefix with only on address assigned under it. This is the routable address of this Thread node.
@@ -220,7 +278,7 @@ Done
 This service will also become visible on the Wi-Fi network:
 
 ```bash
-$ avahi-browse -r _test._udp -t   
+$ avahi-browse -r _test._udp -t
 
 + enp1s0 IPv6 my-service                                    _test._udp           local
 = enp1s0 IPv6 my-service                                    _test._udp           local

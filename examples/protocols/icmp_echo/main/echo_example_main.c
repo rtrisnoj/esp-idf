@@ -73,6 +73,7 @@ static struct {
     struct arg_int *data_size;
     struct arg_int *count;
     struct arg_int *tos;
+    struct arg_int *ttl;
     struct arg_str *host;
     struct arg_end *end;
 } ping_args;
@@ -107,6 +108,10 @@ static int do_ping_cmd(int argc, char **argv)
         config.tos = (uint32_t)(ping_args.tos->ival[0]);
     }
 
+    if (ping_args.ttl->count > 0) {
+        config.ttl = (uint32_t)(ping_args.ttl->ival[0]);
+    }
+
     // parse IP address
     struct sockaddr_in6 sock_addr6;
     ip_addr_t target_addr;
@@ -137,10 +142,10 @@ static int do_ping_cmd(int argc, char **argv)
 
     /* set callback functions */
     esp_ping_callbacks_t cbs = {
+        .cb_args = NULL,
         .on_ping_success = cmd_ping_on_ping_success,
         .on_ping_timeout = cmd_ping_on_ping_timeout,
-        .on_ping_end = cmd_ping_on_ping_end,
-        .cb_args = NULL
+        .on_ping_end = cmd_ping_on_ping_end
     };
     esp_ping_handle_t ping;
     esp_ping_new_session(&config, &cbs, &ping);
@@ -156,6 +161,7 @@ static void register_ping(void)
     ping_args.data_size = arg_int0("s", "size", "<n>", "Specify the number of data bytes to be sent");
     ping_args.count = arg_int0("c", "count", "<n>", "Stop after sending count packets");
     ping_args.tos = arg_int0("Q", "tos", "<n>", "Set Type of Service related bits in IP datagrams");
+    ping_args.ttl = arg_int0("T", "ttl", "<n>", "Set Time to Live related bits in IP datagrams");
     ping_args.host = arg_str1(NULL, NULL, "<host>", "Host address");
     ping_args.end = arg_end(1);
     const esp_console_cmd_t ping_cmd = {
@@ -193,8 +199,6 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    /* wait for active network connection */
-    ESP_ERROR_CHECK(example_connect());
 
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
     // install console REPL environment
@@ -209,6 +213,8 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_console_new_repl_usb_serial_jtag(&usbjtag_config, &repl_config, &repl));
 #endif
 
+    /* register wifi connect commands */
+    example_register_wifi_connect_commands();
     /* register command `ping` */
     register_ping();
     /* register command `quit` */

@@ -13,7 +13,6 @@
 #include <esp_system.h>
 #include <nvs_flash.h>
 #include <sys/param.h>
-#include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_eth.h"
 #include "protocol_examples_common.h"
@@ -141,10 +140,10 @@ static httpd_handle_t start_webserver(void)
     return NULL;
 }
 
-static void stop_webserver(httpd_handle_t server)
+static esp_err_t stop_webserver(httpd_handle_t server)
 {
     // Stop the httpd server
-    httpd_stop(server);
+    return httpd_stop(server);
 }
 
 static void disconnect_handler(void* arg, esp_event_base_t event_base,
@@ -153,8 +152,11 @@ static void disconnect_handler(void* arg, esp_event_base_t event_base,
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server) {
         ESP_LOGI(TAG, "Stopping webserver");
-        stop_webserver(*server);
-        *server = NULL;
+        if (stop_webserver(*server) == ESP_OK) {
+            *server = NULL;
+        } else {
+            ESP_LOGE(TAG, "Failed to stop http server");
+        }
     }
 }
 

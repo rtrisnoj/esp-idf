@@ -1,10 +1,8 @@
 /*
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Unlicense OR CC0-1.0
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -215,7 +213,9 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *pa
     switch (event) {
     /* when device discovered a result, this event comes */
     case ESP_BT_GAP_DISC_RES_EVT: {
-        filter_inquiry_scan_result(param);
+        if (s_a2d_state == APP_AV_STATE_DISCOVERING) {
+            filter_inquiry_scan_result(param);
+        }
         break;
     }
     /* when discovery state changed, this event comes */
@@ -327,7 +327,7 @@ static void bt_av_hdl_stack_evt(uint16_t event, void *p_param)
         /* create and start heart beat timer */
         do {
             int tmr_id = 0;
-            s_tmr = xTimerCreate("connTmr", (10000 / portTICK_RATE_MS),
+            s_tmr = xTimerCreate("connTmr", (10000 / portTICK_PERIOD_MS),
                                  pdTRUE, (void *) &tmr_id, bt_app_a2d_heart_beat);
             xTimerStart(s_tmr, portMAX_DELAY);
         } while (0);
@@ -353,7 +353,7 @@ static int32_t bt_app_a2d_data_cb(uint8_t *data, int32_t len)
         return 0;
     }
 
-    int *p_buf = (int *)data;
+    int16_t *p_buf = (int16_t *)data;
     for (int i = 0; i < (len >> 1); i++) {
         p_buf[i] = rand() % (1 << 16);
     }
@@ -370,7 +370,7 @@ static void bt_app_av_sm_hdlr(uint16_t event, void *param)
 {
     ESP_LOGI(BT_AV_TAG, "%s state: %d, event: 0x%x", __func__, s_a2d_state, event);
 
-    /* select handler according to different states. */
+    /* select handler according to different states */
     switch (s_a2d_state) {
     case APP_AV_STATE_DISCOVERING:
     case APP_AV_STATE_DISCOVERED:
@@ -395,6 +395,7 @@ static void bt_app_av_sm_hdlr(uint16_t event, void *param)
 
 static void bt_app_av_state_unconnected_hdlr(uint16_t event, void *param)
 {
+    esp_a2d_cb_param_t *a2d = NULL;
     /* handle the events of intrest in unconnected state */
     switch (event) {
     case ESP_A2D_CONNECTION_STATE_EVT:
@@ -409,6 +410,11 @@ static void bt_app_av_state_unconnected_hdlr(uint16_t event, void *param)
         esp_a2d_source_connect(s_peer_bda);
         s_a2d_state = APP_AV_STATE_CONNECTING;
         s_connecting_intv = 0;
+        break;
+    }
+    case ESP_A2D_REPORT_SNK_DELAY_VALUE_EVT: {
+        a2d = (esp_a2d_cb_param_t *)(param);
+        ESP_LOGI(BT_AV_TAG, "%s, delay value: %u * 1/10 ms", __func__, a2d->a2d_report_delay_value_stat.delay_value);
         break;
     }
     default: {
@@ -450,6 +456,11 @@ static void bt_app_av_state_connecting_hdlr(uint16_t event, void *param)
             s_connecting_intv = 0;
         }
         break;
+    case ESP_A2D_REPORT_SNK_DELAY_VALUE_EVT: {
+        a2d = (esp_a2d_cb_param_t *)(param);
+        ESP_LOGI(BT_AV_TAG, "%s, delay value: %u * 1/10 ms", __func__, a2d->a2d_report_delay_value_stat.delay_value);
+        break;
+    }
     default:
         ESP_LOGE(BT_AV_TAG, "%s unhandled event: %d", __func__, event);
         break;
@@ -549,11 +560,16 @@ static void bt_app_av_state_connected_hdlr(uint16_t event, void *param)
         break;
     }
     case ESP_A2D_AUDIO_CFG_EVT:
-        /* not suppposed to occur for A2DP source */
+        // not suppposed to occur for A2DP source
         break;
     case ESP_A2D_MEDIA_CTRL_ACK_EVT:
     case BT_APP_HEART_BEAT_EVT: {
         bt_app_av_media_proc(event, param);
+        break;
+    }
+    case ESP_A2D_REPORT_SNK_DELAY_VALUE_EVT: {
+        a2d = (esp_a2d_cb_param_t *)(param);
+        ESP_LOGI(BT_AV_TAG, "%s, delay value: %u * 1/10 ms", __func__, a2d->a2d_report_delay_value_stat.delay_value);
         break;
     }
     default: {
@@ -583,6 +599,11 @@ static void bt_app_av_state_disconnecting_hdlr(uint16_t event, void *param)
     case ESP_A2D_MEDIA_CTRL_ACK_EVT:
     case BT_APP_HEART_BEAT_EVT:
         break;
+    case ESP_A2D_REPORT_SNK_DELAY_VALUE_EVT: {
+        a2d = (esp_a2d_cb_param_t *)(param);
+        ESP_LOGI(BT_AV_TAG, "%s, delay value: 0x%u * 1/10 ms", __func__, a2d->a2d_report_delay_value_stat.delay_value);
+        break;
+    }
     default: {
         ESP_LOGE(BT_AV_TAG, "%s unhandled event: %d", __func__, event);
         break;
@@ -590,6 +611,7 @@ static void bt_app_av_state_disconnecting_hdlr(uint16_t event, void *param)
     }
 }
 
+/* callback function for AVRCP controller */
 static void bt_app_rc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param)
 {
     switch (event) {

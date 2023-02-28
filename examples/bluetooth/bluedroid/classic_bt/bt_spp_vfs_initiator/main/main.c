@@ -1,10 +1,8 @@
 /*
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Unlicense OR CC0-1.0
+ */
 
 /****************************************************************************
 *
@@ -39,8 +37,6 @@
 #define SPP_TAG "SPP_INITIATOR_DEMO"
 #define EXAMPLE_DEVICE_NAME "ESP_SPP_INITIATOR"
 
-static const esp_spp_mode_t esp_spp_mode = ESP_SPP_MODE_VFS;
-
 static const esp_spp_sec_t sec_mask = ESP_SPP_SEC_AUTHENTICATE;
 static const esp_spp_role_t role_master = ESP_SPP_ROLE_MASTER;
 
@@ -54,7 +50,7 @@ static const uint8_t inq_num_rsps = 0;
 
 #define SPP_DATA_LEN 20
 
-static char *bda2str(uint8_t *bda, char *str, size_t size)
+static char *bda2str(uint8_t * bda, char *str, size_t size)
 {
     if (bda == NULL || str == NULL || size < 18) {
         return NULL;
@@ -151,9 +147,6 @@ static void esp_spp_cb(uint16_t e, void *p)
             ESP_LOGI(SPP_TAG, "ESP_SPP_INIT_EVT");
             /* Enable SPP VFS mode */
             esp_spp_vfs_register();
-            esp_bt_dev_set_device_name(EXAMPLE_DEVICE_NAME);
-            esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
-            esp_bt_gap_start_discovery(inq_mode, inq_len, inq_num_rsps);
         } else {
             ESP_LOGE(SPP_TAG, "ESP_SPP_INIT_EVT status:%d", param->init.status);
         }
@@ -196,6 +189,16 @@ static void esp_spp_cb(uint16_t e, void *p)
         break;
     case ESP_SPP_SRV_OPEN_EVT:
         ESP_LOGI(SPP_TAG, "ESP_SPP_SRV_OPEN_EVT");
+        break;
+    case ESP_SPP_VFS_REGISTER_EVT:
+        if (param->vfs_register.status == ESP_SPP_SUCCESS) {
+            ESP_LOGI(SPP_TAG, "ESP_SPP_VFS_REGISTER_EVT");
+            esp_bt_dev_set_device_name(EXAMPLE_DEVICE_NAME);
+            esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+            esp_bt_gap_start_discovery(inq_mode, inq_len, inq_num_rsps);
+        } else {
+            ESP_LOGE(SPP_TAG, "ESP_SPP_VFS_REGISTER_EVT status:%d", param->vfs_register.status);
+        }
         break;
     default:
         break;
@@ -334,7 +337,9 @@ void app_main(void)
     }
 
     spp_task_task_start_up();
-    if (esp_spp_init(esp_spp_mode) != ESP_OK) {
+
+    esp_spp_cfg_t bt_spp_cfg = BT_SPP_DEFAULT_CONFIG();
+    if (esp_spp_enhanced_init(&bt_spp_cfg) != ESP_OK) {
         ESP_LOGE(SPP_TAG, "%s spp init failed", __func__);
         return;
     }

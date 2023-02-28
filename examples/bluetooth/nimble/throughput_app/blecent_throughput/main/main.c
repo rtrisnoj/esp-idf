@@ -7,7 +7,6 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 /* BLE */
-#include "esp_nimble_hci.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -125,8 +124,8 @@ static int blecent_write(uint16_t conn_handle, uint16_t val_handle,
 		goto label;
 	    }
 	    else if (rc != 0) {
-		ESP_LOGE(tag, "Error: Failed to write characteristic; rc=%d\n",rc);
-		goto err;
+            	ESP_LOGE(tag, "Error: Failed to write characteristic; rc=%d\n",rc);
+            	goto err;
         }
 
         end_time = esp_timer_get_time();
@@ -723,7 +722,6 @@ app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    ESP_ERROR_CHECK(esp_nimble_hci_and_controller_init());
 
     nimble_port_init();
 

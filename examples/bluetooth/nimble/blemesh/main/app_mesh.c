@@ -21,7 +21,6 @@
 #include "nvs_flash.h"
 #include "freertos/FreeRTOSConfig.h"
 /* BLE */
-#include "esp_nimble_hci.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -45,25 +44,6 @@ static int recent_test_id = STANDARD_TEST_ID;
 #define FAULT_ARR_SIZE 2
 
 static bool has_reg_fault = true;
-
-
-static struct bt_mesh_cfg_srv cfg_srv = {
-    .relay = BT_MESH_RELAY_DISABLED,
-    .beacon = BT_MESH_BEACON_ENABLED,
-#if MYNEWT_VAL(BLE_MESH_FRIEND)
-    .frnd = BT_MESH_FRIEND_ENABLED,
-#endif
-#if MYNEWT_VAL(BLE_MESH_GATT_PROXY)
-    .gatt_proxy = BT_MESH_GATT_PROXY_ENABLED,
-#else
-    .gatt_proxy = BT_MESH_GATT_PROXY_NOT_SUPPORTED,
-#endif
-    .default_ttl = 7,
-
-    /* 3 transmissions with 20ms interval */
-    .net_transmit = BT_MESH_TRANSMIT(2, 20),
-    .relay_retransmit = BT_MESH_TRANSMIT(2, 20),
-};
 
 static int
 fault_get_cur(struct bt_mesh_model *model,
@@ -305,14 +285,14 @@ static void gen_delta_set_unack(struct bt_mesh_model *model,
 }
 
 static void gen_move_set(struct bt_mesh_model *model,
-                         struct bt_mesh_msg_ctx *ctx,
-                         struct os_mbuf *buf)
+             struct bt_mesh_msg_ctx *ctx,
+             struct os_mbuf *buf)
 {
 }
 
 static void gen_move_set_unack(struct bt_mesh_model *model,
-                               struct bt_mesh_msg_ctx *ctx,
-                               struct os_mbuf *buf)
+                   struct bt_mesh_msg_ctx *ctx,
+                   struct os_mbuf *buf)
 {
 }
 
@@ -328,7 +308,7 @@ static const struct bt_mesh_model_op gen_level_op[] = {
 };
 
 static struct bt_mesh_model root_models[] = {
-    BT_MESH_MODEL_CFG_SRV(&cfg_srv),
+    BT_MESH_MODEL_CFG_SRV,
     BT_MESH_MODEL_HEALTH_SRV(&health_srv, &health_pub),
     BT_MESH_MODEL(BT_MESH_MODEL_ID_GEN_ONOFF_SRV, gen_onoff_op,
               &gen_onoff_pub, NULL),
@@ -381,12 +361,12 @@ static const struct bt_mesh_comp comp = {
 
 static int output_number(bt_mesh_output_action_t action, uint32_t number)
 {
-    ESP_LOGI(tag, "OOB Number: %u\n", number);
+    ESP_LOGI(tag, "OOB Number: %" PRIu32 "\n", number);
 
     return 0;
 }
 
-static void prov_complete(u16_t net_idx, u16_t addr)
+static void prov_complete(uint16_t net_idx, uint16_t addr)
 {
     ESP_LOGI(tag, "Local node provisioned, primary address 0x%04x\n", addr);
 }
@@ -427,6 +407,10 @@ blemesh_on_sync(void)
         return;
     }
 
+#if (MYNEWT_VAL(BLE_MESH_SHELL))
+    shell_register_default_module("mesh");
+#endif
+
     ESP_LOGI(tag, "Mesh initialized\n");
 
     if (IS_ENABLED(CONFIG_SETTINGS)) {
@@ -459,7 +443,6 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    ESP_ERROR_CHECK(esp_nimble_hci_and_controller_init());
     nimble_port_init();
 
     ble_svc_gap_init();

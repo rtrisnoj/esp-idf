@@ -1,11 +1,12 @@
-/* ESP BLE Mesh Example
+/*
+ * ESP BLE Mesh Example
+ *
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Unlicense OR CC0-1.0
+ */
 
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
+#include <inttypes.h>
 
 #include "run_tc.h"
 #include "test_env.h"
@@ -16,7 +17,7 @@
 
 #define TAG "CASE"
 
-xQueueHandle xTaskQueue = 0;
+QueueHandle_t xTaskQueue = 0;
 
 static const char *coex_get_case_env(coex_test_env_t *test_env, const char *keyword)
 {
@@ -49,7 +50,7 @@ static void wifi_tc_sta_throughput_timeout(void *arg)
         uint32_t speed = report[1] * 8 / (now - last_timestamp);
         accumulate_speed += speed;
         statistic_count += 1;
-        printf("speed: %d kbps average speed: %lld kbps\n", speed, accumulate_speed / statistic_count );
+        printf("speed: %" PRIu32 " kbps average speed: %lld kbps\n", speed, accumulate_speed / statistic_count );
         report[1] = 0;
         report[0] = now;
     }
@@ -249,7 +250,7 @@ static void excute_case(void *arg)
     }
 
     if (run_case && run_case->func_stop != NULL ) {
-        vTaskDelay(100 / portTICK_RATE_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
         run_case->func_stop();
     }
     vTaskDelete(NULL);
@@ -261,7 +262,7 @@ static void run_task(void *arg)
     run_task_msg_t msg;
 
     for (;;) {
-        if (pdTRUE == xQueueReceive(xTaskQueue, &msg, (portTickType)portMAX_DELAY)) {
+        if (pdTRUE == xQueueReceive(xTaskQueue, &msg, (TickType_t)portMAX_DELAY)) {
             if ( msg.case_id < sizeof(tc_case) / sizeof(tc_case[0]) ) {
                 xTaskCreatePinnedToCore(excute_case, tc_case_table->name, 4096, &tc_case_table[msg.case_id], RUN_TASK_PRIORITY, NULL, 0);
             } else {

@@ -11,7 +11,8 @@
 #include "freertos/semphr.h"
 
 #include "ble_mesh_console_lib.h"
-#include "ble_mesh_cfg_srv_model.h"
+#include "ble_mesh_model.h"
+#include "esp_ble_mesh_local_data_operation_api.h"
 
 #define TAG "ble_mesh_console"
 
@@ -53,7 +54,7 @@ typedef struct {
     uint16_t *package_index;
     uint8_t  ttl;
 } ble_mesh_performance_statistics_t;
-ble_mesh_performance_statistics_t test_perf_statistics;
+extern ble_mesh_performance_statistics_t test_perf_statistics;
 
 typedef struct {
     uint32_t statistics;
@@ -61,11 +62,11 @@ typedef struct {
     uint16_t *package_index;
     uint32_t total_package_num;
 } ble_mesh_node_statistics_t;
-ble_mesh_node_statistics_t ble_mesh_node_statistics;
+extern ble_mesh_node_statistics_t ble_mesh_node_statistics;
 
 extern SemaphoreHandle_t ble_mesh_node_sema;
 
-#define SEND_MESSAGE_TIMEOUT (30000/portTICK_RATE_MS)
+#define SEND_MESSAGE_TIMEOUT (30000/portTICK_PERIOD_MS)
 
 #define arg_int_to_value(src_msg, dst_msg, message) do { \
     if (src_msg->count != 0) {\
@@ -107,9 +108,9 @@ extern SemaphoreHandle_t ble_mesh_node_sema;
     } \
 }while(0) \
 
-void ble_mesh_node_init(void);
+int ble_mesh_init_node_prestore_params(void);
+void ble_mesh_deinit_node_prestore_params(void);
 void ble_mesh_set_node_prestore_params(uint16_t netkey_index, uint16_t unicast_addr);
-esp_ble_mesh_model_t *ble_mesh_get_model(uint16_t model_id);
 esp_ble_mesh_comp_t *ble_mesh_get_component(uint16_t model_id);
 void ble_mesh_node_statistics_get(void);
 int ble_mesh_node_statistics_accumulate(uint8_t *data, uint32_t value, uint16_t type);

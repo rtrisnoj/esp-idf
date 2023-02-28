@@ -1,54 +1,32 @@
-/* Temperature Sensor Example
+/*
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-#include <stdio.h>
-#include <stdlib.h>
-#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_log.h"
+#include "driver/temperature_sensor.h"
 
-/* Note: ESP32 don't support temperature sensor */
+static const char *TAG = "example";
 
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32C3
-#include "driver/temp_sensor.h"
-
-static const char *TAG = "TempSensor";
-
-void tempsensor_example(void *arg)
+void app_main(void)
 {
-    // Initialize touch pad peripheral, it will start a timer to run a filter
-    ESP_LOGI(TAG, "Initializing Temperature sensor");
-    float tsens_out;
-    temp_sensor_config_t temp_sensor = TSENS_CONFIG_DEFAULT();
-    temp_sensor_get_config(&temp_sensor);
-    ESP_LOGI(TAG, "default dac %d, clk_div %d", temp_sensor.dac_offset, temp_sensor.clk_div);
-    temp_sensor.dac_offset = TSENS_DAC_DEFAULT; // DEFAULT: range:-10℃ ~  80℃, error < 1℃.
-    temp_sensor_set_config(temp_sensor);
-    temp_sensor_start();
-    ESP_LOGI(TAG, "Temperature sensor started");
-    while (1) {
-        vTaskDelay(1000 / portTICK_RATE_MS);
-        temp_sensor_read_celsius(&tsens_out);
-        ESP_LOGI(TAG, "Temperature out celsius %f°C", tsens_out);
+    ESP_LOGI(TAG, "Install temperature sensor, expected temp ranger range: 10~50 ℃");
+    temperature_sensor_handle_t temp_sensor = NULL;
+    temperature_sensor_config_t temp_sensor_config = TEMPERATURE_SENSOR_CONFIG_DEFAULT(10, 50);
+    ESP_ERROR_CHECK(temperature_sensor_install(&temp_sensor_config, &temp_sensor));
+
+    ESP_LOGI(TAG, "Enable temperature sensor");
+    ESP_ERROR_CHECK(temperature_sensor_enable(temp_sensor));
+
+    ESP_LOGI(TAG, "Read temperature");
+    int cnt = 20;
+    float tsens_value;
+    while (cnt--) {
+        ESP_ERROR_CHECK(temperature_sensor_get_celsius(temp_sensor, &tsens_value));
+        ESP_LOGI(TAG, "Temperature value %.02f ℃", tsens_value);
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    vTaskDelete(NULL);
 }
-
-void app_main(void)
-{
-    xTaskCreate(tempsensor_example, "temp", 2048, NULL, 5, NULL);
-}
-
-#elif CONFIG_IDF_TARGET_ESP32
-
-void app_main(void)
-{
-    printf("ESP32 don't support temperature sensor\n");
-}
-
-#endif

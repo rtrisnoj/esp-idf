@@ -1,10 +1,8 @@
 /*
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Unlicense OR CC0-1.0
+ */
 
 /****************************************************************************
 *
@@ -40,14 +38,12 @@
 #define SPP_SERVER_NAME "SPP_SERVER"
 #define EXAMPLE_DEVICE_NAME "ESP_SPP_ACCEPTOR"
 
-static const esp_spp_mode_t esp_spp_mode = ESP_SPP_MODE_VFS;
-
 static const esp_spp_sec_t sec_mask = ESP_SPP_SEC_AUTHENTICATE;
 static const esp_spp_role_t role_slave = ESP_SPP_ROLE_SLAVE;
 
 #define SPP_DATA_LEN 100
 
-static char *bda2str(uint8_t *bda, char *str, size_t size)
+static char *bda2str(uint8_t * bda, char *str, size_t size)
 {
     if (bda == NULL || str == NULL || size < 18) {
         return NULL;
@@ -106,7 +102,6 @@ static void esp_spp_cb(uint16_t e, void *p)
             ESP_LOGI(SPP_TAG, "ESP_SPP_INIT_EVT");
             /* Enable SPP VFS mode */
             esp_spp_vfs_register();
-            esp_spp_start_srv(sec_mask, role_slave, 0, SPP_SERVER_NAME);
         } else {
             ESP_LOGE(SPP_TAG, "ESP_SPP_INIT_EVT status:%d", param->init.status);
         }
@@ -139,6 +134,14 @@ static void esp_spp_cb(uint16_t e, void *p)
                  param->srv_open.handle, bda2str(param->srv_open.rem_bda, bda_str, sizeof(bda_str)));
         if (param->srv_open.status == ESP_SPP_SUCCESS) {
             spp_wr_task_start_up(spp_read_handle, param->srv_open.fd);
+        }
+        break;
+    case ESP_SPP_VFS_REGISTER_EVT:
+        if (param->vfs_register.status == ESP_SPP_SUCCESS) {
+            ESP_LOGI(SPP_TAG, "ESP_SPP_VFS_REGISTER_EVT");
+            esp_spp_start_srv(sec_mask, role_slave, 0, SPP_SERVER_NAME);
+        } else {
+            ESP_LOGE(SPP_TAG, "ESP_SPP_VFS_REGISTER_EVT status:%d", param->vfs_register.status);
         }
         break;
     default:
@@ -252,7 +255,8 @@ void app_main(void)
 
     spp_task_task_start_up();
 
-    if (esp_spp_init(esp_spp_mode) != ESP_OK) {
+    esp_spp_cfg_t bt_spp_cfg = BT_SPP_DEFAULT_CONFIG();
+    if (esp_spp_enhanced_init(&bt_spp_cfg) != ESP_OK) {
         ESP_LOGE(SPP_TAG, "%s spp init failed", __func__);
         return;
     }

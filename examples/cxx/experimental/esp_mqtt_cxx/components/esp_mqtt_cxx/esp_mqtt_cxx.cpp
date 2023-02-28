@@ -1,19 +1,13 @@
-// Copyright 2021 Espressif Systems (Shanghai) CO LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//         http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <string>
 #include <algorithm>
+#include <stdexcept>
+#include <inttypes.h>
 
 #include "mqtt_client.h"
 #include "esp_log.h"
@@ -43,13 +37,13 @@ void config_broker(esp_mqtt_client_config_t &mqtt_client_cfg, BrokerConfiguratio
     std::visit(overloaded{
         [&mqtt_client_cfg](Host const & host)
         {
-            mqtt_client_cfg.host = host.address.c_str();
-            mqtt_client_cfg.path = host.path.c_str();
-            mqtt_client_cfg.transport = host.transport;
+            mqtt_client_cfg.broker.address.hostname = host.address.c_str();
+            mqtt_client_cfg.broker.address.path = host.path.c_str();
+            mqtt_client_cfg.broker.address.transport = host.transport;
         },
         [&mqtt_client_cfg](URI const & uri)
         {
-            mqtt_client_cfg.uri = uri.address.c_str();
+            mqtt_client_cfg.broker.address.uri = uri.address.c_str();
         },
         []([[maybe_unused ]]auto & unknown)
         {
@@ -62,18 +56,18 @@ void config_broker(esp_mqtt_client_config_t &mqtt_client_cfg, BrokerConfiguratio
         []([[maybe_unused]]Insecure const & insecure) {},
         [&mqtt_client_cfg](GlobalCAStore const & use_global_store)
         {
-            mqtt_client_cfg.use_global_ca_store = true;
+            mqtt_client_cfg.broker.verification.use_global_ca_store = true;
         },
         [&mqtt_client_cfg](CryptographicInformation const & certificates)
         {
             std::visit(overloaded{
                 [&mqtt_client_cfg](PEM const & pem)
                 {
-                    mqtt_client_cfg.cert_pem = pem.data;
+                    mqtt_client_cfg.broker.verification.certificate= pem.data;
                 }, [&mqtt_client_cfg](DER const & der)
                 {
-                    mqtt_client_cfg.cert_pem = der.data;
-                    mqtt_client_cfg.cert_len = der.len;
+                    mqtt_client_cfg.broker.verification.certificate = der.data;
+                    mqtt_client_cfg.broker.verification.certificate_len = der.len;
                 }}, certificates);
         },
         []([[maybe_unused]] PSK const & psk) {},
@@ -83,7 +77,7 @@ void config_broker(esp_mqtt_client_config_t &mqtt_client_cfg, BrokerConfiguratio
         }
     },
     broker.security);
-    mqtt_client_cfg.port = broker.address.port;
+    mqtt_client_cfg.broker.address.port = broker.address.port;
 }
 
 /*
@@ -92,12 +86,12 @@ void config_broker(esp_mqtt_client_config_t &mqtt_client_cfg, BrokerConfiguratio
  */
 void config_client_credentials(esp_mqtt_client_config_t &mqtt_client_cfg, ClientCredentials const &credentials)
 {
-    mqtt_client_cfg.client_id = credentials.client_id.has_value() ?  credentials.client_id.value().c_str() : nullptr ;
-    mqtt_client_cfg.username = credentials.username.has_value() ?  credentials.username.value().c_str() : nullptr ;
+    mqtt_client_cfg.credentials.client_id = credentials.client_id.has_value() ?  credentials.client_id.value().c_str() : nullptr ;
+    mqtt_client_cfg.credentials.username = credentials.username.has_value() ?  credentials.username.value().c_str() : nullptr ;
     std::visit(overloaded{
         [&mqtt_client_cfg](Password const & password)
         {
-            mqtt_client_cfg.password = password.data.c_str();
+            mqtt_client_cfg.credentials.authentication.password = password.data.c_str();
         },
         [](ClientCertificate const & certificate) {},
         [](SecureElement const & enable_secure_element) {},
@@ -133,7 +127,7 @@ Client::Client(esp_mqtt_client_config_t const &config) :  handler(esp_mqtt_clien
 
 void Client::mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) noexcept
 {
-    ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%d", base, event_id);
+    ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32, base, event_id);
     auto *event = static_cast<esp_mqtt_event_t *>(event_data);
     auto &client = *static_cast<Client *>(handler_args);
     switch (event->event_id) {

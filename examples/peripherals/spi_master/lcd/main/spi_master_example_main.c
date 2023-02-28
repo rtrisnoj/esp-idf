@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
@@ -39,18 +40,18 @@
 #define PIN_NUM_DC   21
 #define PIN_NUM_RST  18
 #define PIN_NUM_BCKL 5
-#elif defined CONFIG_IDF_TARGET_ESP32S2
+#elif defined CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 #define LCD_HOST    SPI2_HOST
 
 #define PIN_NUM_MISO 37
 #define PIN_NUM_MOSI 35
 #define PIN_NUM_CLK  36
-#define PIN_NUM_CS   34
+#define PIN_NUM_CS   45
 
 #define PIN_NUM_DC   4
 #define PIN_NUM_RST  5
 #define PIN_NUM_BCKL 6
-#elif defined CONFIG_IDF_TARGET_ESP32C3
+#elif defined CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C2
 #define LCD_HOST    SPI2_HOST
 
 #define PIN_NUM_MISO 2
@@ -184,7 +185,7 @@ DRAM_ATTR static const lcd_init_cmd_t ili_init_cmds[]={
  * mode for higher speed. The overhead of interrupt transactions is more than
  * just waiting for the transaction to complete.
  */
-void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd)
+void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd, bool keep_cs_active)
 {
     esp_err_t ret;
     spi_transaction_t t;
@@ -192,6 +193,9 @@ void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd)
     t.length=8;                     //Command is 8 bits
     t.tx_buffer=&cmd;               //The data is the cmd itself
     t.user=(void*)0;                //D/C needs to be set to 0
+    if (keep_cs_active) {
+      t.flags = SPI_TRANS_CS_KEEP_ACTIVE;   //Keep CS active after data transfer
+    }
     ret=spi_device_polling_transmit(spi, &t);  //Transmit!
     assert(ret==ESP_OK);            //Should have had no issues.
 }
@@ -226,8 +230,11 @@ void lcd_spi_pre_transfer_callback(spi_transaction_t *t)
 
 uint32_t lcd_get_id(spi_device_handle_t spi)
 {
+    // When using SPI_TRANS_CS_KEEP_ACTIVE, bus must be locked/acquired
+    spi_device_acquire_bus(spi, portMAX_DELAY);
+
     //get_id cmd
-    lcd_cmd(spi, 0x04);
+    lcd_cmd(spi, 0x04, true);
 
     spi_transaction_t t;
     memset(&t, 0, sizeof(t));
@@ -237,6 +244,9 @@ uint32_t lcd_get_id(spi_device_handle_t spi)
 
     esp_err_t ret = spi_device_polling_transmit(spi, &t);
     assert( ret == ESP_OK );
+
+    // Release bus
+    spi_device_release_bus(spi);
 
     return *(uint32_t*)t.rx_data;
 }
@@ -248,22 +258,24 @@ void lcd_init(spi_device_handle_t spi)
     const lcd_init_cmd_t* lcd_init_cmds;
 
     //Initialize non-SPI GPIOs
-    gpio_set_direction(PIN_NUM_DC, GPIO_MODE_OUTPUT);
-    gpio_set_direction(PIN_NUM_RST, GPIO_MODE_OUTPUT);
-    gpio_set_direction(PIN_NUM_BCKL, GPIO_MODE_OUTPUT);
+    gpio_config_t io_conf = {};
+    io_conf.pin_bit_mask = ((1ULL<<PIN_NUM_DC) | (1ULL<<PIN_NUM_RST) | (1ULL<<PIN_NUM_BCKL));
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pull_up_en = true;
+    gpio_config(&io_conf);
 
     //Reset the display
     gpio_set_level(PIN_NUM_RST, 0);
-    vTaskDelay(100 / portTICK_RATE_MS);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
     gpio_set_level(PIN_NUM_RST, 1);
-    vTaskDelay(100 / portTICK_RATE_MS);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
 
     //detect LCD type
     uint32_t lcd_id = lcd_get_id(spi);
     int lcd_detected_type = 0;
     int lcd_type;
 
-    printf("LCD ID: %08X\n", lcd_id);
+    printf("LCD ID: %08"PRIx32"\n", lcd_id);
     if ( lcd_id == 0 ) {
         //zero, ili
         lcd_detected_type = LCD_TYPE_ILI;
@@ -293,10 +305,10 @@ void lcd_init(spi_device_handle_t spi)
 
     //Send all the commands
     while (lcd_init_cmds[cmd].databytes!=0xff) {
-        lcd_cmd(spi, lcd_init_cmds[cmd].cmd);
+        lcd_cmd(spi, lcd_init_cmds[cmd].cmd, false);
         lcd_data(spi, lcd_init_cmds[cmd].data, lcd_init_cmds[cmd].databytes&0x1F);
         if (lcd_init_cmds[cmd].databytes&0x80) {
-            vTaskDelay(100 / portTICK_RATE_MS);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
         }
         cmd++;
     }
