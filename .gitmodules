@@ -3,29 +3,13 @@
 # For Espressif's public projects please use '../../espressif/proj', not a '../proj'
 #
 
-[submodule "components/esptool_py/esptool"]
-	path = components/esptool_py/esptool
-	url = ../../espressif/esptool.git
-
 [submodule "components/bt/controller/lib_esp32"]
 	path = components/bt/controller/lib_esp32
-        url = ../../espressif/esp32-bt-lib.git
+	url = ../../espressif/esp32-bt-lib.git
 
 [submodule "components/bootloader/subproject/components/micro-ecc/micro-ecc"]
 	path = components/bootloader/subproject/components/micro-ecc/micro-ecc
 	url = ../../kmackay/micro-ecc.git
-
-[submodule "components/coap/libcoap"]
-	path = components/coap/libcoap
-	url = ../../obgm/libcoap.git
-
-[submodule "components/nghttp/nghttp2"]
-	path = components/nghttp/nghttp2
-	url = ../../nghttp2/nghttp2.git
-
-[submodule "components/libsodium/libsodium"]
-	path = components/libsodium/libsodium
-	url = ../../jedisct1/libsodium.git
 
 [submodule "components/spiffs/spiffs"]
 	path = components/spiffs/spiffs
@@ -35,13 +19,9 @@
 	path = components/json/cJSON
 	url = ../../DaveGamble/cJSON.git
 
-[submodule "components/asio/asio"]
-	path = components/asio/asio
-	url = ../../espressif/asio.git
-
-[submodule "components/expat/expat"]
-	path = components/expat/expat
-	url = ../../libexpat/libexpat.git
+[submodule "components/mbedtls/mbedtls"]
+	path = components/mbedtls/mbedtls
+	url = ../../espressif/mbedtls.git
 
 [submodule "components/lwip/lwip"]
 	path = components/lwip/lwip
@@ -59,29 +39,13 @@
 	path = components/unity/unity
 	url = ../../ThrowTheSwitch/Unity.git
 
-[submodule "examples/build_system/cmake/import_lib/main/lib/tinyxml2"]
-	path = examples/build_system/cmake/import_lib/main/lib/tinyxml2
-	url = ../../leethomason/tinyxml2.git
-
 [submodule "components/bt/host/nimble/nimble"]
 	path = components/bt/host/nimble/nimble
 	url = ../../espressif/esp-nimble.git
 
-[submodule "components/cbor/tinycbor"]
-	path = components/cbor/tinycbor
-	url = ../../intel/tinycbor.git
-
 [submodule "components/esp_wifi/lib"]
 	path = components/esp_wifi/lib
 	url = ../../espressif/esp32-wifi-lib.git
-
-[submodule "components/tinyusb/tinyusb"]
-	path = components/tinyusb/tinyusb
-	url = ../../espressif/tinyusb.git
-
-[submodule "examples/peripherals/secure_element/atecc608_ecdsa/components/esp-cryptoauthlib"]
-	path = examples/peripherals/secure_element/atecc608_ecdsa/components/esp-cryptoauthlib
-	url = ../../espressif/esp-cryptoauthlib.git
 
 [submodule "components/cmock/CMock"]
 	path = components/cmock/CMock
@@ -106,3 +70,15 @@
 [submodule "components/ieee802154/lib"]
 	path = components/ieee802154/lib
 	url = ../../espressif/esp-ieee802154-lib.git
+
+[submodule "components/bt/controller/lib_esp32h2/esp32h2-bt-lib"]
+	path = components/bt/controller/lib_esp32h2/esp32h2-bt-lib
+	url = ../../espressif/esp32h2-bt-lib.git
+
+[submodule "components/bt/controller/lib_esp32c2/esp32c2-bt-lib"]
+	path = components/bt/controller/lib_esp32c2/esp32c2-bt-lib
+	url = ../../espressif/esp32c2-bt-lib.git
+
+[submodule "components/heap/tlsf"]
+	path = components/heap/tlsf
+	url = ../../espressif/tlsf.git
