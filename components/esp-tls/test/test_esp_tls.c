@@ -1,19 +1,24 @@
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "test_utils.h"
+#include "memory_checks.h"
 #include "esp_tls.h"
 #include "unity.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_mac.h"
+#include "sys/socket.h"
 #if SOC_SHA_SUPPORT_PARALLEL_ENG
 #include "sha/sha_parallel_engine.h"
 #elif SOC_SHA_SUPPORT_DMA
 #include "sha/sha_dma.h"
+#else
+#include "sha/sha_block.h"
 #endif
+#include "test_utils.h"
 
 const char *test_cert_pem =   "-----BEGIN CERTIFICATE-----\n"\
                               "MIICrDCCAZQCCQD88gCs5AFs/jANBgkqhkiG9w0BAQsFADAYMRYwFAYDVQQDDA1F\n"\
@@ -62,6 +67,11 @@ const char *test_key_pem =    "-----BEGIN PRIVATE KEY-----\n"\
                               "Aogx44Fozd1t2hYcozPuZD4s\n"\
                               "-----END PRIVATE KEY-----\n";
 
+#if SOC_SHA_SUPPORT_SHA512
+#define SHA_TYPE SHA2_512
+#else
+#define SHA_TYPE SHA2_256
+#endif //SOC_SHA_SUPPORT_SHA512
 
 static void test_leak_setup(const char *file, long line)
 {
@@ -69,13 +79,13 @@ static void test_leak_setup(const char *file, long line)
     struct timeval te;
     gettimeofday(&te, NULL); // get current time
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    printf("%s:%ld: time=%ld.%lds, mac:" MACSTR "\n", file, line, te.tv_sec, te.tv_usec, MAC2STR(mac));
+    printf("%s:%ld: time=%jd.%lds, mac:" MACSTR "\n", file, line, (intmax_t)te.tv_sec, te.tv_usec, MAC2STR(mac));
     // Execute esp_sha operation to allocate internal SHA semaphore memory
     // which is considered as leaked otherwise
     const uint8_t input_buffer[64];
     uint8_t output_buffer[64];
-    esp_sha(SHA2_512, input_buffer, sizeof(input_buffer), output_buffer);
-    unity_reset_leak_checks();
+    esp_sha(SHA_TYPE, input_buffer, sizeof(input_buffer), output_buffer);
+    test_utils_record_free_mem();
 }
 
 
