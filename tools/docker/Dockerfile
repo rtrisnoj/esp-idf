@@ -2,7 +2,6 @@ FROM ubuntu:20.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# We need libpython2.7 due to GDB tools
 RUN : \
   && apt-get update \
   && apt-get install -y \
@@ -14,16 +13,18 @@ RUN : \
     curl \
     flex \
     git \
+    git-lfs \
     gperf \
     lcov \
+    libbsd-dev \
     libffi-dev \
     libncurses-dev \
-    libpython2.7 \
     libusb-1.0-0-dev \
     make \
     ninja-build \
     python3 \
-    python3-pip \
+    python3-venv \
+    ruby \
     unzip \
     wget \
     xz-utils \
@@ -31,9 +32,6 @@ RUN : \
   && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/* \
   && update-alternatives --install /usr/bin/python python /usr/bin/python3 10 \
-  && python -m pip install --upgrade \
-    pip \
-    virtualenv \
   && :
 
 # To build the image for a branch or a tag of IDF, pass --build-arg IDF_CLONE_BRANCH_OR_TAG=name.
@@ -41,20 +39,28 @@ RUN : \
 # It is possibe to combine both, e.g.:
 #   IDF_CLONE_BRANCH_OR_TAG=release/vX.Y
 #   IDF_CHECKOUT_REF=<some commit on release/vX.Y branch>.
+# Use IDF_CLONE_SHALLOW=1 to peform shallow clone (i.e. --depth=1 --shallow-submodules)
+# Use IDF_INSTALL_TARGETS to install tools only for selected chip targets (CSV)
 
 ARG IDF_CLONE_URL=https://github.com/espressif/esp-idf.git
 ARG IDF_CLONE_BRANCH_OR_TAG=master
 ARG IDF_CHECKOUT_REF=
+ARG IDF_CLONE_SHALLOW=
+ARG IDF_INSTALL_TARGETS=all
 
 ENV IDF_PATH=/opt/esp/idf
 ENV IDF_TOOLS_PATH=/opt/esp
 
 RUN echo IDF_CHECKOUT_REF=$IDF_CHECKOUT_REF IDF_CLONE_BRANCH_OR_TAG=$IDF_CLONE_BRANCH_OR_TAG && \
     git clone --recursive \
+      ${IDF_CLONE_SHALLOW:+--depth=1 --shallow-submodules} \
       ${IDF_CLONE_BRANCH_OR_TAG:+-b $IDF_CLONE_BRANCH_OR_TAG} \
       $IDF_CLONE_URL $IDF_PATH && \
     if [ -n "$IDF_CHECKOUT_REF" ]; then \
       cd $IDF_PATH && \
+      if [ -n "$IDF_CLONE_SHALLOW" ]; then \
+        git fetch origin --depth=1 --recurse-submodules ${IDF_CHECKOUT_REF}; \
+      fi && \
       git checkout $IDF_CHECKOUT_REF && \
       git submodule update --init --recursive; \
     fi
@@ -62,11 +68,15 @@ RUN echo IDF_CHECKOUT_REF=$IDF_CHECKOUT_REF IDF_CLONE_BRANCH_OR_TAG=$IDF_CLONE_B
 # Install all the required tools
 RUN : \
   && update-ca-certificates --fresh \
-  && $IDF_PATH/tools/idf_tools.py --non-interactive install required \
+  && $IDF_PATH/tools/idf_tools.py --non-interactive install required --targets=${IDF_INSTALL_TARGETS} \
   && $IDF_PATH/tools/idf_tools.py --non-interactive install cmake \
   && $IDF_PATH/tools/idf_tools.py --non-interactive install-python-env \
   && rm -rf $IDF_TOOLS_PATH/dist \
   && :
+
+# The constraint file has been downloaded and the right Python package versions installed. No need to check and
+# download this at every invocation of the container.
+ENV IDF_PYTHON_CHECK_CONSTRAINTS=no
 
 # Ccache is installed, enable it by default
 ENV IDF_CCACHE_ENABLE=1

@@ -1,23 +1,17 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 Espressif Systems (Shanghai) CO LTD
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-FileCopyrightText: 2019-2022 Espressif Systems (Shanghai) CO LTD
+# SPDX-License-Identifier: Apache-2.0
 
+import json
 import os
 import subprocess
 import sys
-import unittest
+from unittest import TestCase, main, mock
+
+import elftools.common.utils as ecu
+import jsonschema
+from elftools.elf.elffile import ELFFile
 
 try:
     from StringIO import StringIO
@@ -33,10 +27,24 @@ except ImportError:
 current_dir = os.path.dirname(os.path.realpath(__file__))
 idf_py_path = os.path.join(current_dir, '..', 'idf.py')
 extension_path = os.path.join(current_dir, 'test_idf_extensions', 'test_ext')
-link_path = os.path.join(current_dir, '..', 'idf_py_actions', 'test_ext')
+py_actions_path = os.path.join(current_dir, '..', 'idf_py_actions')
+link_path = os.path.join(py_actions_path, 'test_ext')
 
 
-class TestExtensions(unittest.TestCase):
+class TestWithoutExtensions(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Disable the component manager and extra extensions for these tests
+        cls.env_patcher = mock.patch.dict(os.environ, {
+            'IDF_COMPONENT_MANAGER': '0',
+            'IDF_EXTRA_ACTIONS_PATH': '',
+        })
+        cls.env_patcher.start()
+
+        super().setUpClass()
+
+
+class TestExtensions(TestWithoutExtensions):
     def test_extension_loading(self):
         try:
             os.symlink(extension_path, link_path)
@@ -78,7 +86,7 @@ class TestExtensions(unittest.TestCase):
             os.remove(link_path)
 
 
-class TestDependencyManagement(unittest.TestCase):
+class TestDependencyManagement(TestWithoutExtensions):
     def test_dependencies(self):
         result = idf.init_cli()(
             args=['--dry-run', 'flash'],
@@ -129,7 +137,7 @@ class TestDependencyManagement(unittest.TestCase):
             'WARNING: Command "clean" is found in the list of commands more than once.', capturedOutput.getvalue())
 
 
-class TestVerboseFlag(unittest.TestCase):
+class TestVerboseFlag(TestWithoutExtensions):
     def test_verbose_messages(self):
         output = subprocess.check_output(
             [
@@ -155,7 +163,7 @@ class TestVerboseFlag(unittest.TestCase):
         self.assertNotIn('Verbose mode on', output)
 
 
-class TestGlobalAndSubcommandParameters(unittest.TestCase):
+class TestGlobalAndSubcommandParameters(TestWithoutExtensions):
     def test_set_twice_same_value(self):
         """Can set -D twice: globally and for subcommand if values are the same"""
 
@@ -174,21 +182,24 @@ class TestGlobalAndSubcommandParameters(unittest.TestCase):
             )
 
 
-class TestDeprecations(unittest.TestCase):
+class TestDeprecations(TestWithoutExtensions):
     def test_exit_with_error_for_subcommand(self):
         try:
-            subprocess.check_output([sys.executable, idf_py_path, '-C%s' % current_dir, 'test-2'], env=os.environ,
-                                    stderr=subprocess.STDOUT)
+            subprocess.check_output(
+                [sys.executable, idf_py_path, '-C%s' % current_dir, 'test-2'], env=os.environ, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             self.assertIn('Error: Command "test-2" is deprecated and was removed.', e.output.decode('utf-8', 'ignore'))
 
     def test_exit_with_error_for_option(self):
         try:
-            subprocess.check_output([sys.executable, idf_py_path, '-C%s' % current_dir, '--test-5=asdf'],
-                                    env=os.environ, stderr=subprocess.STDOUT)
+            subprocess.check_output(
+                [sys.executable, idf_py_path, '-C%s' % current_dir, '--test-5=asdf'],
+                env=os.environ,
+                stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
-            self.assertIn('Error: Option "test_5" is deprecated since v2.0 and was removed in v3.0.',
-                          e.output.decode('utf-8', 'ignore'))
+            self.assertIn(
+                'Error: Option "test_5" is deprecated since v2.0 and was removed in v3.0.',
+                e.output.decode('utf-8', 'ignore'))
 
     def test_deprecation_messages(self):
         output = subprocess.check_output(
@@ -206,7 +217,8 @@ class TestDeprecations(unittest.TestCase):
                 'ta',
                 'test-1',
             ],
-            env=os.environ, stderr=subprocess.STDOUT).decode('utf-8', 'ignore')
+            env=os.environ,
+            stderr=subprocess.STDOUT).decode('utf-8', 'ignore')
 
         self.assertIn('Warning: Option "test_sub_1" is deprecated and will be removed in future versions.', output)
         self.assertIn(
@@ -221,5 +233,63 @@ class TestDeprecations(unittest.TestCase):
         self.assertNotIn('"test_0" is deprecated', output)
 
 
+class TestHelpOutput(TestWithoutExtensions):
+    def test_output(self):
+        def action_test(commands, schema):
+            output_file = 'idf_py_help_output.json'
+            with open(output_file, 'w') as outfile:
+                subprocess.run(commands, env=os.environ, stdout=outfile)
+            with open(output_file, 'r') as outfile:
+                help_obj = json.load(outfile)
+            self.assertIsNone(jsonschema.validate(help_obj, schema))
+
+        with open(os.path.join(current_dir, 'idf_py_help_schema.json'), 'r') as schema_file:
+            schema_json = json.load(schema_file)
+        action_test(['idf.py', 'help', '--json'], schema_json)
+        action_test(['idf.py', 'help', '--json', '--add-options'], schema_json)
+
+
+class TestROMs(TestWithoutExtensions):
+    def get_string_from_elf_by_addr(self, filename: str, address: int) -> str:
+        result = ''
+        with open(filename, 'rb') as stream:
+            elf_file = ELFFile(stream)
+            ro = elf_file.get_section_by_name('.rodata')
+            ro_addr_delta = ro['sh_addr'] - ro['sh_offset']
+            cstring = ecu.parse_cstring_from_stream(ro.stream, address - ro_addr_delta)
+            if cstring:
+                result = str(cstring.decode('utf-8'))
+        return result
+
+    def test_roms_validate_json(self):
+        with open(os.path.join(py_actions_path, 'roms.json'), 'r') as f:
+            roms_json = json.load(f)
+
+        with open(os.path.join(py_actions_path, 'roms_schema.json'), 'r') as f:
+            schema_json = json.load(f)
+        jsonschema.validate(roms_json, schema_json)
+
+    def test_roms_check_supported_chips(self):
+        from idf_py_actions.constants import SUPPORTED_TARGETS
+        with open(os.path.join(py_actions_path, 'roms.json'), 'r') as f:
+            roms_json = json.load(f)
+        for chip in SUPPORTED_TARGETS:
+            self.assertTrue(chip in roms_json, msg=f'Have no ROM data for chip {chip}')
+
+    def test_roms_validate_build_date(self):
+        sys.path.append(py_actions_path)
+
+        rom_elfs_dir = os.getenv('ESP_ROM_ELF_DIR')
+        with open(os.path.join(py_actions_path, 'roms.json'), 'r') as f:
+            roms_json = json.load(f)
+
+        for chip in roms_json:
+            for k in roms_json[chip]:
+                rom_file = os.path.join(rom_elfs_dir, f'{chip}_rev{k["rev"]}_rom.elf')
+                build_date_str = self.get_string_from_elf_by_addr(rom_file, int(k['build_date_str_addr'], base=16))
+                self.assertTrue(len(build_date_str) == 11)
+                self.assertTrue(build_date_str == k['build_date_str'])
+
+
 if __name__ == '__main__':
-    unittest.main()
+    main()

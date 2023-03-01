@@ -9,10 +9,13 @@ import ssl
 import string
 import subprocess
 import sys
-from threading import Event, Thread
+import time
+from itertools import count
+from threading import Event, Lock, Thread
 
 import paho.mqtt.client as mqtt
 import ttfw_idf
+from common_test_methods import get_host_ip4_by_dest_ip
 
 DEFAULT_MSG_SIZE = 16
 
@@ -28,20 +31,7 @@ def set_server_cert_cn(ip):
          '-CAkey', _path('ca.key'), '-CAcreateserial', '-out', _path('srv.crt'), '-days', '360']]
     for args in arg_list:
         if subprocess.check_call(args) != 0:
-            raise('openssl command {} failed'.format(args))
-
-
-def get_my_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # doesn't even have to be reachable
-        s.connect(('10.255.255.255', 1))
-        IP = s.getsockname()[0]
-    except Exception:
-        IP = '127.0.0.1'
-    finally:
-        s.close()
-    return IP
+            raise RuntimeError('openssl command {} failed'.format(args))
 
 
 # Publisher class creating a python client to send/receive published data from esp-mqtt client
@@ -59,6 +49,7 @@ class MqttPublisher:
         self.publish_cfg['qos'] = qos
         self.publish_cfg['queue'] = queue
         self.publish_cfg['transport'] = transport
+        self.lock = Lock()
         # static variables used to pass options to and from static callbacks of paho-mqtt client
         MqttPublisher.event_client_connected = Event()
         MqttPublisher.event_client_got_all = Event()
@@ -71,9 +62,11 @@ class MqttPublisher:
         if self.log_details:
             print(text)
 
-    def mqtt_client_task(self, client):
+    def mqtt_client_task(self, client, lock):
         while not self.event_stop_client.is_set():
-            client.loop()
+            with lock:
+                client.loop()
+            time.sleep(0.001)   # yield to other threads
 
     # The callback for when the client receives a CONNACK response from the server (needs to be static)
     @staticmethod
@@ -120,18 +113,20 @@ class MqttPublisher:
             self.print_details('ENV_TEST_FAILURE: Unexpected error while connecting to broker {}'.format(broker_host))
             raise
         # Starting a py-client in a separate thread
-        thread1 = Thread(target=self.mqtt_client_task, args=(self.client,))
+        thread1 = Thread(target=self.mqtt_client_task, args=(self.client, self.lock))
         thread1.start()
         self.print_details('Connecting py-client to broker {}:{}...'.format(broker_host, broker_port))
         if not MqttPublisher.event_client_connected.wait(timeout=30):
             raise ValueError('ENV_TEST_FAILURE: Test script cannot connect to broker: {}'.format(broker_host))
-        self.client.subscribe(self.publish_cfg['subscribe_topic'], qos)
+        with self.lock:
+            self.client.subscribe(self.publish_cfg['subscribe_topic'], qos)
         self.dut.write(' '.join(str(x) for x in (transport, self.sample_string, self.repeat, MqttPublisher.published, qos, queue)), eol='\n')
         try:
             # waiting till subscribed to defined topic
             self.dut.expect(re.compile(r'MQTT_EVENT_SUBSCRIBED'), timeout=30)
             for _ in range(MqttPublisher.published):
-                self.client.publish(self.publish_cfg['publish_topic'], self.sample_string * self.repeat, qos)
+                with self.lock:
+                    self.client.publish(self.publish_cfg['publish_topic'], self.sample_string * self.repeat, qos)
                 self.print_details('Publishing...')
             self.print_details('Checking esp-client received msg published from py-client...')
             self.dut.expect(re.compile(r'Correct pattern received exactly x times'), timeout=60)
@@ -240,8 +235,8 @@ class TlsServer:
             self.shutdown.set()
 
 
-def connection_tests(dut, cases):
-    ip = get_my_ip()
+def connection_tests(dut, cases, dut_ip):
+    ip = get_host_ip4_by_dest_ip(dut_ip)
     set_server_cert_cn(ip)
     server_port = 2222
 
@@ -269,7 +264,7 @@ def connection_tests(dut, cases):
             dut.expect('MQTT_EVENT_ERROR: Test={}'.format(test_nr), timeout=30)
             dut.expect('ESP-TLS ERROR: ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED')  # expect ... handshake error (PEER_DID_NOT_RETURN_A_CERTIFICATE)
             if 'PEER_DID_NOT_RETURN_A_CERTIFICATE' not in s.get_last_ssl_error():
-                raise('Unexpected ssl error from the server {}'.format(s.get_last_ssl_error()))
+                raise RuntimeError('Unexpected ssl error from the server {}'.format(s.get_last_ssl_error()))
 
     for case in ['CONFIG_EXAMPLE_CONNECT_CASE_MUTUAL_AUTH', 'CONFIG_EXAMPLE_CONNECT_CASE_MUTUAL_AUTH_KEY_PWD']:
         # These cases connect to server with both server and client verification (client key might be password protected)
@@ -307,7 +302,7 @@ def connection_tests(dut, cases):
     teardown_connection_suite()
 
 
-@ttfw_idf.idf_custom_test(env_tag='Example_EthKitV1', group='test-apps')
+@ttfw_idf.idf_custom_test(env_tag='ethernet_router', group='test-apps')
 def test_app_protocol_mqtt_publish_connect(env, extra_data):
     """
     steps:
@@ -341,11 +336,11 @@ def test_app_protocol_mqtt_publish_connect(env, extra_data):
         raise
 
     dut1.start_app()
-    esp_ip = dut1.expect(re.compile(r' IPv4 address: ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)'), timeout=30)
-    print('Got IP={}'.format(esp_ip[0]))
+    esp_ip = dut1.expect(re.compile(r'IPv4 address: (\d+\.\d+\.\d+\.\d+)[^\d]'), timeout=30)[0]
+    print('Got IP={}'.format(esp_ip))
 
     if not os.getenv('MQTT_SKIP_CONNECT_TEST'):
-        connection_tests(dut1,cases)
+        connection_tests(dut1,cases,esp_ip)
 
     #
     # start publish tests only if enabled in the environment (for weekend tests only)
@@ -360,7 +355,7 @@ def test_app_protocol_mqtt_publish_connect(env, extra_data):
                 return None, None
             return value.group(1), int(value.group(2))
 
-        publish_cfg['publish_topic'] = dut1.app.get_sdkconfig()['CONFIG_EXAMPLE_SUBSCIBE_TOPIC'].replace('"','')
+        publish_cfg['publish_topic'] = dut1.app.get_sdkconfig()['CONFIG_EXAMPLE_SUBSCRIBE_TOPIC'].replace('"','')
         publish_cfg['subscribe_topic'] = dut1.app.get_sdkconfig()['CONFIG_EXAMPLE_PUBLISH_TOPIC'].replace('"','')
         publish_cfg['broker_host_ssl'], publish_cfg['broker_port_ssl'] = get_host_port_from_dut(dut1, 'CONFIG_EXAMPLE_BROKER_SSL_URI')
         publish_cfg['broker_host_tcp'], publish_cfg['broker_port_tcp'] = get_host_port_from_dut(dut1, 'CONFIG_EXAMPLE_BROKER_TCP_URI')
@@ -377,16 +372,31 @@ def test_app_protocol_mqtt_publish_connect(env, extra_data):
         with MqttPublisher(dut1, transport, qos, repeat, published, queue, publish_cfg):
             pass
 
+    # Initialize message sizes and repeat counts (if defined in the environment)
+    messages = []
+    for i in count(0):
+        # Check env variable: MQTT_PUBLISH_MSG_{len|repeat}_{x}
+        env_dict = {var:'MQTT_PUBLISH_MSG_' + var + '_' + str(i) for var in ['len', 'repeat']}
+        if os.getenv(env_dict['len']) and os.getenv(env_dict['repeat']):
+            messages.append({var: int(os.getenv(env_dict[var])) for var in ['len', 'repeat']})
+            continue
+        break
+    if not messages:    # No message sizes present in the env - set defaults
+        messages = [{'len':0,   'repeat':5},    # zero-sized messages
+                    {'len':2,   'repeat':10},   # short messages
+                    {'len':200, 'repeat':3},    # long messages
+                    {'len':20,  'repeat':50}    # many medium sized
+                    ]
+
+    # Iterate over all publish message properties
     for qos in [0, 1, 2]:
         for transport in ['tcp', 'ssl', 'ws', 'wss']:
             for q in [0, 1]:
                 if publish_cfg['broker_host_' + transport] is None:
                     print('Skipping transport: {}...'.format(transport))
                     continue
-                start_publish_case(transport, qos, 0, 5, q)
-                start_publish_case(transport, qos, 2, 5, q)
-                start_publish_case(transport, qos, 50, 1, q)
-                start_publish_case(transport, qos, 10, 20, q)
+                for msg in messages:
+                    start_publish_case(transport, qos, msg['len'], msg['repeat'], q)
 
 
 if __name__ == '__main__':

@@ -264,12 +264,18 @@ def detect_target_chip(map_file: Iterable) -> str:
     ''' Detect target chip based on the target archive name in the linker script part of the MAP file '''
     scan_to_header(map_file, 'Linker script and memory map')
 
-    RE_TARGET = re.compile(r'project_elf_src_(.*)\.c.obj')
+    RE_TARGET = re.compile(r'IDF_TARGET_(\S*) =')
+    # For back-compatible with cmake in idf version before 5.0
+    RE_TARGET_CMAKEv4x = re.compile(r'project_elf_src_(\S*)\.c.obj')
     # For back-compatible with make
     RE_TARGET_MAKE = re.compile(r'^LOAD .*?/xtensa-([^-]+)-elf/')
 
     for line in map_file:
         match_target = RE_TARGET.search(line)
+        if match_target:
+            return match_target.group(1).lower()
+
+        match_target = RE_TARGET_CMAKEv4x.search(line)
         if match_target:
             return match_target.group(1)
 
@@ -375,9 +381,7 @@ def load_sections(map_file: TextIO) -> Dict:
             if srcs:
                 last_src = srcs[-1]
                 if last_src['size'] > 0 and last_src['address'] == int(match_line.group('address'), 16):
-                    if '.comment' != section['name'] and '.debug_str' != section['name'] and\
-                            'rodata' not in last_src['sym_name']:
-
+                    if section['name'] not in ['.comment', '.debug_str', '.debug_line_str'] and 'rodata' not in last_src['sym_name']:
                         raise RuntimeError('Due to overlap with following lines, size of the line set to 0:\n    %s' % dump_src_line(last_src))
 
                     last_src['size'] = 0
@@ -567,12 +571,16 @@ class StructureForSummary(object):
         r = StructureForSummary()
 
         diram_filter = filter(in_diram, segments)
-        r.diram_total = int(get_size(diram_filter) / 2)
+        r.diram_total = get_size(diram_filter)
 
         dram_filter = filter(in_dram, segments)
         r.dram_total = get_size(dram_filter)
         iram_filter = filter(in_iram, segments)
         r.iram_total = get_size(iram_filter)
+
+        # This fixes counting the diram twice if the cache fills the iram entirely
+        if r.iram_total == 0:
+            r.diram_total //= 2
 
         def filter_in_section(sections: Iterable[MemRegions.Region], section_to_check: str) -> List[MemRegions.Region]:
             return list(filter(lambda x: LinkingSections.in_section(x.section, section_to_check), sections))  # type: ignore

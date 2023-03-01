@@ -1,16 +1,5 @@
-# Copyright 2015-2021 Espressif Systems (Shanghai) CO LTD
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
+# SPDX-License-Identifier: Apache-2.0
 
 import argparse
 import os
@@ -29,10 +18,16 @@ def get_parser():  # type: () -> argparse.ArgumentParser
     )
 
     parser.add_argument(
+        '--no-reset',
+        help='Do not reset the chip on monitor startup',
+        action='store_true'
+    )
+
+    parser.add_argument(
         '--disable-address-decoding', '-d',
         help="Don't print lines about decoded addresses from the application ELF file",
         action='store_true',
-        default=os.environ.get('ESP_MONITOR_DECODE') == 0
+        default=os.getenv('ESP_MONITOR_DECODE') == '0'
     )
 
     parser.add_argument(
@@ -65,7 +60,9 @@ def get_parser():  # type: () -> argparse.ArgumentParser
 
     parser.add_argument(
         'elf_file', help='ELF file of application',
-        type=argparse.FileType('rb'))
+        type=lambda f: open(f, 'rb') if os.path.exists(f) else f'{f}',
+        nargs='?'
+    )
 
     parser.add_argument(
         '--print_filter',
@@ -116,5 +113,11 @@ def get_parser():  # type: () -> argparse.ArgumentParser
         default=os.environ.get('ESP_IDF_MONITOR_TIMESTAMP_FORMAT', '%Y-%m-%d %H:%M:%S'),
         help='Set a strftime()-compatible timestamp format'
     )
+
+    parser.add_argument(
+        '--force-color',
+        help='Always colored monitor output, even if output is redirected.',
+        default=False,
+        action='store_true')
 
     return parser

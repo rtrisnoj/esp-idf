@@ -1,5 +1,5 @@
 # Designed to be included from an IDF app's CMakeLists.txt file
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.16)
 
 include(${CMAKE_CURRENT_LIST_DIR}/targets.cmake)
 # Initialize build target for this build using the environment variable or
@@ -38,6 +38,14 @@ else()
     idf_build_set_property(EXTRA_CMAKE_ARGS "")
 endif()
 
+
+# Enable the component manager for regular projects if not explicitly disabled.
+if(NOT "$ENV{IDF_COMPONENT_MANAGER}" EQUAL "0")
+    idf_build_set_property(IDF_COMPONENT_MANAGER 1)
+endif()
+# Set component manager interface version
+idf_build_set_property(__COMPONENT_MANAGER_INTERFACE_VERSION 1)
+
 #
 # Get the project version from either a version file or the Git revision. This is passed
 # to the idf_build_process call. Dependencies are also set here for when the version file
@@ -61,6 +69,38 @@ function(__project_get_revision var)
         endif()
     endif()
     set(${var} "${PROJECT_VER}" PARENT_SCOPE)
+endfunction()
+
+
+# paths_with_spaces_to_list
+#
+# Replacement for spaces2list in cases where it was previously used on
+# directory lists.
+#
+# If the variable doesn't contain spaces, (e.g. is already a CMake list)
+# then the variable is unchanged. Otherwise an external Python script is called
+# to try to split the paths, and the variable is updated with the result.
+#
+# This feature is added only for compatibility. Please do not introduce new
+# space separated path lists.
+#
+function(paths_with_spaces_to_list variable_name)
+    if("${${variable_name}}" MATCHES "[ \t]")
+        idf_build_get_property(python PYTHON)
+        idf_build_get_property(idf_path IDF_PATH)
+        execute_process(
+            COMMAND ${python}
+                "${idf_path}/tools/split_paths_by_spaces.py"
+                "--var-name=${variable_name}"
+                "${${variable_name}}"
+            WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+            OUTPUT_VARIABLE result
+            RESULT_VARIABLE ret)
+        if(NOT ret EQUAL 0)
+            message(FATAL_ERROR "Failed to parse ${variable_name}, see diagnostics above")
+        endif()
+        set("${variable_name}" "${result}" PARENT_SCOPE)
+    endif()
 endfunction()
 
 #
@@ -111,6 +151,7 @@ function(__project_info test_components)
     include(${sdkconfig_cmake})
     idf_build_get_property(COMPONENT_KCONFIGS KCONFIGS)
     idf_build_get_property(COMPONENT_KCONFIGS_PROJBUILD KCONFIG_PROJBUILDS)
+    idf_build_get_property(debug_prefix_map_gdbinit DEBUG_PREFIX_MAP_GDBINIT)
 
     # Write project description JSON file
     idf_build_get_property(build_dir BUILD_DIR)
@@ -118,6 +159,9 @@ function(__project_info test_components)
     make_json_list("${build_component_paths};${test_component_paths}" build_component_paths_json)
     configure_file("${idf_path}/tools/cmake/project_description.json.in"
         "${build_dir}/project_description.json")
+
+    # Generate component dependency graph
+    depgraph_generate("${build_dir}/component_deps.dot")
 
     # We now have the following component-related variables:
     #
@@ -178,9 +222,13 @@ function(__project_init components_var test_components_var)
     # extra directories, etc. passed from the root CMakeLists.txt.
     if(COMPONENT_DIRS)
         # User wants to fully override where components are pulled from.
-        spaces2list(COMPONENT_DIRS)
+        paths_with_spaces_to_list(COMPONENT_DIRS)
         idf_build_set_property(__COMPONENT_TARGETS "")
         foreach(component_dir ${COMPONENT_DIRS})
+            get_filename_component(component_abs_path ${component_dir} ABSOLUTE)
+            if(NOT EXISTS ${component_abs_path})
+                message(FATAL_ERROR "Directory specified in COMPONENT_DIRS doesn't exist: ${component_abs_path}")
+            endif()
             __project_component_dir(${component_dir})
         endforeach()
     else()
@@ -188,8 +236,12 @@ function(__project_init components_var test_components_var)
             __project_component_dir("${CMAKE_CURRENT_LIST_DIR}/main")
         endif()
 
-        spaces2list(EXTRA_COMPONENT_DIRS)
+        paths_with_spaces_to_list(EXTRA_COMPONENT_DIRS)
         foreach(component_dir ${EXTRA_COMPONENT_DIRS})
+            get_filename_component(component_abs_path ${component_dir} ABSOLUTE)
+            if(NOT EXISTS ${component_abs_path})
+                message(FATAL_ERROR "Directory specified in EXTRA_COMPONENT_DIRS doesn't exist: ${component_abs_path}")
+            endif()
             __project_component_dir("${component_dir}")
         endforeach()
 
@@ -292,6 +344,12 @@ macro(project project_name)
     # Generate compile_commands.json (needs to come after project call).
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+    # If CMAKE_COLOR_DIAGNOSTICS not set in project CMakeLists.txt or in the environment,
+    # enable it by default.
+    if(NOT DEFINED CMAKE_COLOR_DIAGNOSTICS AND NOT DEFINED ENV{CMAKE_COLOR_DIAGNOSTICS})
+        set(CMAKE_COLOR_DIAGNOSTICS ON)
+    endif()
+
     # Since components can import third-party libraries, the original definition of project() should be restored
     # before the call to add components to the build.
     function(project)
@@ -301,7 +359,7 @@ macro(project project_name)
         # Set the variables that project() normally sets, documented in the
         # command's docs.
         #
-        # https://cmake.org/cmake/help/v3.5/command/project.html
+        # https://cmake.org/cmake/help/v3.16/command/project.html
         #
         # There is some nuance when it comes to setting version variables in terms of whether
         # CMP0048 is set to OLD or NEW. However, the proper behavior should have bee already handled by the original
@@ -314,6 +372,8 @@ macro(project project_name)
         set(PROJECT_VERSION_MINOR "${PROJECT_VERSION_MINOR}" PARENT_SCOPE)
         set(PROJECT_VERSION_PATCH "${PROJECT_VERSION_PATCH}" PARENT_SCOPE)
         set(PROJECT_VERSION_TWEAK "${PROJECT_VERSION_TWEAK}" PARENT_SCOPE)
+        set(PROJECT_DESCRIPTION "${PROJECT_DESCRIPTION}" PARENT_SCOPE)
+        set(PROJECT_HOMEPAGE_URL "${PROJECT_HOMEPAGE_URL}" PARENT_SCOPE)
 
         set(${PROJECT_NAME}_BINARY_DIR "${${PROJECT_NAME}_BINARY_DIR}" PARENT_SCOPE)
         set(${PROJECT_NAME}_SOURCE_DIR "${${PROJECT_NAME}_SOURCE_DIR}" PARENT_SCOPE)
@@ -322,6 +382,8 @@ macro(project project_name)
         set(${PROJECT_NAME}_VERSION_MINOR "${${PROJECT_NAME}_VERSION_MINOR}" PARENT_SCOPE)
         set(${PROJECT_NAME}_VERSION_PATCH "${${PROJECT_NAME}_VERSION_PATCH}" PARENT_SCOPE)
         set(${PROJECT_NAME}_VERSION_TWEAK "${${PROJECT_NAME}_VERSION_TWEAK}" PARENT_SCOPE)
+        set(${PROJECT_NAME}_DESCRIPTION "${${PROJECT_NAME}_DESCRIPTION}" PARENT_SCOPE)
+        set(${PROJECT_NAME}_HOMEPAGE_URL "${${PROJECT_NAME}_HOMEPAGE_URL}" PARENT_SCOPE)
     endfunction()
 
     # Prepare the following arguments for the idf_build_process() call using external
@@ -395,8 +457,10 @@ macro(project project_name)
         __component_get_target(main_target idf::main)
         __component_get_property(reqs ${main_target} REQUIRES)
         __component_get_property(priv_reqs ${main_target} PRIV_REQUIRES)
-        idf_build_get_property(common_reqs __COMPONENT_REQUIRES_COMMON)
-        if(reqs STREQUAL common_reqs AND NOT priv_reqs) #if user has not set any requirements
+        __component_get_property(managed_reqs ${main_target} MANAGED_REQUIRES)
+        __component_get_property(managed_priv_reqs ${main_target} MANAGED_PRIV_REQUIRES)
+        #if user has not set any requirements, except ones added with the component manager
+        if((NOT reqs OR reqs STREQUAL managed_reqs) AND (NOT priv_reqs OR priv_reqs STREQUAL managed_priv_reqs))
             if(test_components)
                 list(REMOVE_ITEM build_components ${test_components})
             endif()
@@ -423,28 +487,46 @@ macro(project project_name)
     add_dependencies(${project_elf} _project_elf_src)
 
     if(__PROJECT_GROUP_LINK_COMPONENTS)
-        target_link_libraries(${project_elf} "-Wl,--start-group")
+        target_link_libraries(${project_elf} PRIVATE "-Wl,--start-group")
     endif()
 
     if(test_components)
-        target_link_libraries(${project_elf} "-Wl,--whole-archive")
+        target_link_libraries(${project_elf} PRIVATE "-Wl,--whole-archive")
         foreach(test_component ${test_components})
             if(TARGET ${test_component})
-                target_link_libraries(${project_elf} ${test_component})
+                target_link_libraries(${project_elf} PRIVATE ${test_component})
             endif()
         endforeach()
-        target_link_libraries(${project_elf} "-Wl,--no-whole-archive")
+        target_link_libraries(${project_elf} PRIVATE "-Wl,--no-whole-archive")
     endif()
 
     idf_build_get_property(build_components BUILD_COMPONENT_ALIASES)
     if(test_components)
         list(REMOVE_ITEM build_components ${test_components})
     endif()
-    target_link_libraries(${project_elf} ${build_components})
+
+    foreach(build_component ${build_components})
+        __component_get_target(build_component_target ${build_component})
+        __component_get_property(whole_archive ${build_component_target} WHOLE_ARCHIVE)
+        if(whole_archive)
+            message(STATUS "Component ${build_component} will be linked with -Wl,--whole-archive")
+            target_link_libraries(${project_elf} PRIVATE
+                                  "-Wl,--whole-archive"
+                                   ${build_component}
+                                   "-Wl,--no-whole-archive")
+        else()
+            target_link_libraries(${project_elf} PRIVATE ${build_component})
+        endif()
+    endforeach()
+
 
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
         set(mapfile "${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.map")
-        target_link_libraries(${project_elf} "-Wl,--cref" "-Wl,--Map=\"${mapfile}\"")
+        set(idf_target "${IDF_TARGET}")
+        string(TOUPPER ${idf_target} idf_target)
+        target_link_libraries(${project_elf} PRIVATE "-Wl,--cref" "-Wl,--defsym=IDF_TARGET_${idf_target}=0"
+        "-Wl,--Map=\"${mapfile}\"")
+        unset(idf_target)
     endif()
 
     set_property(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" APPEND PROPERTY
