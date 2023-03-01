@@ -101,7 +101,7 @@ esp_err_t spi_flash_hal_configure_host_io_mode(
         return ESP_ERR_NOT_SUPPORTED;
     }
 
-#if SOC_SPI_PERIPH_SUPPORT_CONTROL_DUMMY_OUTPUT
+#if SOC_SPI_PERIPH_SUPPORT_CONTROL_DUMMY_OUT
     // The CONTROL_DUMMY_OUTPUT feature is used to control M7-M0 bits.
     spi_flash_ll_set_dummy_out(dev, (conf_required? 1: 0), 1);
 #else
@@ -135,16 +135,11 @@ esp_err_t spi_flash_hal_common_command(spi_flash_host_inst_t *host, spi_flash_tr
     esp_flash_io_mode_t io_mode = ((spi_flash_hal_context_t*)host)->base_io_mode;
     uint16_t command;
     uint8_t dummy_bitlen;
-    if (trans->reserved != 0) {
-        // Back-compatible with caller functions of ESP32-S3 ROM
-        command = (uint8_t)trans->reserved;
-        dummy_bitlen = 0;
-    } else {
-        command = trans->command;
-        dummy_bitlen = trans->dummy_bitlen;
-        if ((trans->flags & SPI_FLASH_TRANS_FLAG_IGNORE_BASEIO) != 0) {
-            io_mode = trans->io_mode;
-        }
+
+    command = trans->command;
+    dummy_bitlen = trans->dummy_bitlen;
+    if ((trans->flags & SPI_FLASH_TRANS_FLAG_IGNORE_BASEIO) != 0) {
+        io_mode = trans->io_mode;
     }
 
     host->driver->configure_host_io_mode(host, command, trans->address_bitlen, dummy_bitlen, io_mode);

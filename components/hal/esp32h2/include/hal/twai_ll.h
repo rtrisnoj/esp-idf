@@ -1,16 +1,8 @@
-// Copyright 2021 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 /*******************************************************************************
  * NOTICE
@@ -28,6 +20,7 @@ extern "C" {
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "esp_assert.h"
 #include "hal/misc.h"
 #include "hal/twai_types.h"
 #include "soc/twai_periph.h"
@@ -85,7 +78,7 @@ typedef union {
     uint8_t bytes[13];
 } __attribute__((packed)) twai_ll_frame_buffer_t;
 
-_Static_assert(sizeof(twai_ll_frame_buffer_t) == 13, "TX/RX buffer type should be 13 bytes");
+ESP_STATIC_ASSERT(sizeof(twai_ll_frame_buffer_t) == 13, "TX/RX buffer type should be 13 bytes");
 
 /* ---------------------------- Mode Register ------------------------------- */
 
@@ -517,7 +510,7 @@ static inline void twai_ll_set_tx_buffer(twai_dev_t *hw, twai_ll_frame_buffer_t 
  * @param hw Start address of the TWAI registers
  * @param rx_frame Pointer to store formatted frame
  *
- * @note Call twai_ll_prase_frame_buffer() to parse the formatted frame
+ * @note Call twai_ll_parse_frame_buffer() to parse the formatted frame
  */
 static inline void twai_ll_get_rx_buffer(twai_dev_t *hw, twai_ll_frame_buffer_t *rx_frame)
 {
@@ -585,7 +578,7 @@ static inline void twai_ll_format_frame_buffer(uint32_t id, uint8_t dlc, const u
  * @param[out] data Data. Left over bytes set to 0.
  * @param[out] format Type of TWAI frame
  */
-static inline void twai_ll_prase_frame_buffer(twai_ll_frame_buffer_t *rx_frame, uint32_t *id, uint8_t *dlc,
+static inline void twai_ll_parse_frame_buffer(twai_ll_frame_buffer_t *rx_frame, uint32_t *id, uint8_t *dlc,
                                              uint8_t *data, uint32_t *flags)
 {
     //Copy frame information

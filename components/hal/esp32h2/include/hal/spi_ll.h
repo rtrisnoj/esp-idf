@@ -74,6 +74,21 @@ typedef enum {
 } spi_ll_trans_len_cond_t;
 FLAG_ATTR(spi_ll_trans_len_cond_t)
 
+// SPI base command in esp32h2
+typedef enum {
+     /* Slave HD Only */
+    SPI_LL_BASE_CMD_HD_WRBUF    = 0x01,
+    SPI_LL_BASE_CMD_HD_RDBUF    = 0x02,
+    SPI_LL_BASE_CMD_HD_WRDMA    = 0x03,
+    SPI_LL_BASE_CMD_HD_RDDMA    = 0x04,
+    SPI_LL_BASE_CMD_HD_SEG_END  = 0x05,
+    SPI_LL_BASE_CMD_HD_EN_QPI   = 0x06,
+    SPI_LL_BASE_CMD_HD_WR_END   = 0x07,
+    SPI_LL_BASE_CMD_HD_INT0     = 0x08,
+    SPI_LL_BASE_CMD_HD_INT1     = 0x09,
+    SPI_LL_BASE_CMD_HD_INT2     = 0x0A,
+} spi_ll_base_command_t;
+
 /*------------------------------------------------------------------------------
  * Control
  *----------------------------------------------------------------------------*/
@@ -562,7 +577,6 @@ static inline void spi_ll_master_set_line_mode(spi_dev_t *hw, spi_line_mode_t li
 static inline void spi_ll_slave_set_seg_mode(spi_dev_t *hw, bool seg_trans)
 {
     hw->dma_conf.dma_seg_trans_en = seg_trans;
-    hw->dma_conf.rx_eof_en = seg_trans;
 }
 
 /**
@@ -960,16 +974,16 @@ static inline uint32_t spi_ll_slave_get_rcv_bitlen(spi_dev_t *hw)
 //helper macros to generate code for each interrupts
 #define FOR_EACH_ITEM(op, list) do { list(op) } while(0)
 #define INTR_LIST(item)    \
-    item(SPI_LL_INTR_TRANS_DONE,    dma_int_ena.trans_done,         dma_int_raw.trans_done,         dma_int_clr.trans_done=1) \
-    item(SPI_LL_INTR_RDBUF,         dma_int_ena.rd_buf_done,        dma_int_raw.rd_buf_done,        dma_int_clr.rd_buf_done=1) \
-    item(SPI_LL_INTR_WRBUF,         dma_int_ena.wr_buf_done,        dma_int_raw.wr_buf_done,        dma_int_clr.wr_buf_done=1) \
-    item(SPI_LL_INTR_RDDMA,         dma_int_ena.rd_dma_done,        dma_int_raw.rd_dma_done,        dma_int_clr.rd_dma_done=1) \
-    item(SPI_LL_INTR_WRDMA,         dma_int_ena.wr_dma_done,        dma_int_raw.wr_dma_done,        dma_int_clr.wr_dma_done=1) \
-    item(SPI_LL_INTR_SEG_DONE,      dma_int_ena.dma_seg_trans_done, dma_int_raw.dma_seg_trans_done, dma_int_clr.dma_seg_trans_done=1) \
-    item(SPI_LL_INTR_CMD7,          dma_int_ena.cmd7,               dma_int_raw.cmd7,               dma_int_clr.cmd7=1) \
-    item(SPI_LL_INTR_CMD8,          dma_int_ena.cmd8,               dma_int_raw.cmd8,               dma_int_clr.cmd8=1) \
-    item(SPI_LL_INTR_CMD9,          dma_int_ena.cmd9,               dma_int_raw.cmd9,               dma_int_clr.cmd9=1) \
-    item(SPI_LL_INTR_CMDA,          dma_int_ena.cmda,               dma_int_raw.cmda,               dma_int_clr.cmda=1)
+    item(SPI_LL_INTR_TRANS_DONE,    dma_int_ena.trans_done,         dma_int_raw.trans_done,         dma_int_clr.trans_done,         dma_int_set.trans_done_int_set) \
+    item(SPI_LL_INTR_RDBUF,         dma_int_ena.rd_buf_done,        dma_int_raw.rd_buf_done,        dma_int_clr.rd_buf_done,        dma_int_set.rd_buf_done_int_set) \
+    item(SPI_LL_INTR_WRBUF,         dma_int_ena.wr_buf_done,        dma_int_raw.wr_buf_done,        dma_int_clr.wr_buf_done,        dma_int_set.wr_buf_done_int_set) \
+    item(SPI_LL_INTR_RDDMA,         dma_int_ena.rd_dma_done,        dma_int_raw.rd_dma_done,        dma_int_clr.rd_dma_done,        dma_int_set.rd_dma_done_int_set) \
+    item(SPI_LL_INTR_WRDMA,         dma_int_ena.wr_dma_done,        dma_int_raw.wr_dma_done,        dma_int_clr.wr_dma_done,        dma_int_set.wr_dma_done_int_set) \
+    item(SPI_LL_INTR_SEG_DONE,      dma_int_ena.dma_seg_trans_done, dma_int_raw.dma_seg_trans_done, dma_int_clr.dma_seg_trans_done, dma_int_set.dma_seg_trans_done_int_set) \
+    item(SPI_LL_INTR_CMD7,          dma_int_ena.cmd7,               dma_int_raw.cmd7,               dma_int_clr.cmd7,               dma_int_set.cmd7_int_set) \
+    item(SPI_LL_INTR_CMD8,          dma_int_ena.cmd8,               dma_int_raw.cmd8,               dma_int_clr.cmd8,               dma_int_set.cmd8_int_set) \
+    item(SPI_LL_INTR_CMD9,          dma_int_ena.cmd9,               dma_int_raw.cmd9,               dma_int_clr.cmd9,               dma_int_set.cmd9_int_set) \
+    item(SPI_LL_INTR_CMDA,          dma_int_ena.cmda,               dma_int_raw.cmda,               dma_int_clr.cmda,               dma_int_set.cmda_int_set)
 
 
 static inline void spi_ll_enable_intr(spi_dev_t *hw, spi_ll_intr_t intr_mask)
@@ -988,14 +1002,14 @@ static inline void spi_ll_disable_intr(spi_dev_t *hw, spi_ll_intr_t intr_mask)
 
 static inline void spi_ll_set_intr(spi_dev_t *hw, spi_ll_intr_t intr_mask)
 {
-#define SET_INTR(intr_bit, _, st_reg, ...) if (intr_mask & (intr_bit)) hw->st_reg = 1;
+#define SET_INTR(intr_bit, _, __, ___, set_reg) if (intr_mask & (intr_bit)) hw->set_reg = 1;
     FOR_EACH_ITEM(SET_INTR, INTR_LIST);
 #undef SET_INTR
 }
 
 static inline void spi_ll_clear_intr(spi_dev_t *hw, spi_ll_intr_t intr_mask)
 {
-#define CLR_INTR(intr_bit, _, __, clr_reg) if (intr_mask & (intr_bit)) hw->clr_reg;
+#define CLR_INTR(intr_bit, _, __, clr_reg, ...) if (intr_mask & (intr_bit)) hw->clr_reg = 1;
     FOR_EACH_ITEM(CLR_INTR, INTR_LIST);
 #undef CLR_INTR
 }
@@ -1028,7 +1042,7 @@ static inline void spi_ll_disable_int(spi_dev_t *hw)
  */
 static inline void spi_ll_clear_int_stat(spi_dev_t *hw)
 {
-    hw->dma_int_raw.trans_done = 0;
+    hw->dma_int_clr.trans_done = 1;
 }
 
 /**
@@ -1038,7 +1052,7 @@ static inline void spi_ll_clear_int_stat(spi_dev_t *hw)
  */
 static inline void spi_ll_set_int_stat(spi_dev_t *hw)
 {
-    hw->dma_int_raw.trans_done = 1;
+    hw->dma_int_set.trans_done_int_set = 1;
 }
 
 /**
@@ -1074,6 +1088,93 @@ static inline uint32_t spi_ll_slave_hd_get_last_addr(spi_dev_t *hw)
 
 #undef SPI_LL_RST_MASK
 #undef SPI_LL_UNUSED_INT_MASK
+
+/**
+ * Get the base spi command in esp32h2
+ *
+ * @param cmd_t           Command value
+ */
+static inline uint8_t spi_ll_get_slave_hd_base_command(spi_command_t cmd_t)
+{
+    uint8_t cmd_base = 0x00;
+    switch (cmd_t)
+    {
+    case SPI_CMD_HD_WRBUF:
+        cmd_base = SPI_LL_BASE_CMD_HD_WRBUF;
+        break;
+    case SPI_CMD_HD_RDBUF:
+        cmd_base = SPI_LL_BASE_CMD_HD_RDBUF;
+        break;
+    case SPI_CMD_HD_WRDMA:
+        cmd_base = SPI_LL_BASE_CMD_HD_WRDMA;
+        break;
+    case SPI_CMD_HD_RDDMA:
+        cmd_base = SPI_LL_BASE_CMD_HD_RDDMA;
+        break;
+    case SPI_CMD_HD_SEG_END:
+        cmd_base = SPI_LL_BASE_CMD_HD_SEG_END;
+        break;
+    case SPI_CMD_HD_EN_QPI:
+        cmd_base = SPI_LL_BASE_CMD_HD_EN_QPI;
+        break;
+    case SPI_CMD_HD_WR_END:
+        cmd_base = SPI_LL_BASE_CMD_HD_WR_END;
+        break;
+    case SPI_CMD_HD_INT0:
+        cmd_base = SPI_LL_BASE_CMD_HD_INT0;
+        break;
+    case SPI_CMD_HD_INT1:
+        cmd_base = SPI_LL_BASE_CMD_HD_INT1;
+        break;
+    case SPI_CMD_HD_INT2:
+        cmd_base = SPI_LL_BASE_CMD_HD_INT2;
+        break;
+    default:
+        HAL_ASSERT(cmd_base);
+    }
+    return cmd_base;
+}
+
+/**
+ * Get the spi communication command
+ *
+ * @param cmd_t           Base command value
+ * @param line_mode       Line mode of SPI transaction phases: CMD, ADDR, DOUT/DIN.
+ */
+static inline uint16_t spi_ll_get_slave_hd_command(spi_command_t cmd_t, spi_line_mode_t line_mode)
+{
+    uint8_t cmd_base = spi_ll_get_slave_hd_base_command(cmd_t);
+    uint8_t cmd_mod = 0x00; //CMD:1-bit, ADDR:1-bit, DATA:1-bit
+
+    if (line_mode.data_lines == 2) {
+        if (line_mode.addr_lines == 2) {
+            cmd_mod = 0x50; //CMD:1-bit, ADDR:2-bit, DATA:2-bit
+        } else {
+            cmd_mod = 0x10; //CMD:1-bit, ADDR:1-bit, DATA:2-bit
+        }
+    } else if (line_mode.data_lines == 4) {
+        if (line_mode.addr_lines == 4) {
+            cmd_mod = 0xA0; //CMD:1-bit, ADDR:4-bit, DATA:4-bit
+        } else {
+            cmd_mod = 0x20; //CMD:1-bit, ADDR:1-bit, DATA:4-bit
+        }
+    }
+    if (cmd_base == SPI_LL_BASE_CMD_HD_SEG_END || cmd_base == SPI_LL_BASE_CMD_HD_EN_QPI) {
+        cmd_mod = 0x00;
+    }
+
+    return cmd_base | cmd_mod;
+}
+
+/**
+ * Get the dummy bits
+ *
+ * @param line_mode       Line mode of SPI transaction phases: CMD, ADDR, DOUT/DIN.
+ */
+static inline int spi_ll_get_slave_hd_dummy_bits(spi_line_mode_t line_mode)
+{
+    return 8;
+}
 
 #ifdef __cplusplus
 }

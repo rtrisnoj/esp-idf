@@ -1,16 +1,8 @@
-// Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -93,6 +85,7 @@ static esp_err_t mount_to_vfs_fat(const esp_vfs_fat_mount_config_t *mount_config
     FATFS* fs = NULL;
     esp_err_t err;
     ff_diskio_register_sdmmc(pdrv, card);
+    ff_sdmmc_set_disk_status_check(pdrv, mount_config->disk_status_check_enable);
     ESP_LOGD(TAG, "using pdrv=%i", pdrv);
     char drv[3] = {(char)('0' + pdrv), ':', 0};
 
@@ -153,7 +146,7 @@ static esp_err_t partition_card(const esp_vfs_fat_mount_config_t *mount_config,
         return ESP_ERR_NO_MEM;
     }
 
-    DWORD plist[] = {100, 0, 0, 0};
+    LBA_t plist[] = {100, 0, 0, 0};
     res = f_fdisk(pdrv, plist, workbuf);
     if (res != FR_OK) {
         err = ESP_FAIL;
@@ -164,7 +157,8 @@ static esp_err_t partition_card(const esp_vfs_fat_mount_config_t *mount_config,
                 card->csd.sector_size,
                 mount_config->allocation_unit_size);
     ESP_LOGW(TAG, "formatting card, allocation unit size=%d", alloc_unit_size);
-    res = f_mkfs(drv, FM_ANY, alloc_unit_size, workbuf, workbuf_size);
+    const MKFS_PARM opt = {(BYTE)FM_ANY, 0, 0, 0, alloc_unit_size};
+    res = f_mkfs(drv, &opt, workbuf, workbuf_size);
     if (res != FR_OK) {
         err = ESP_FAIL;
         ESP_LOGD(TAG, "f_mkfs failed (%d)", res);
@@ -185,11 +179,6 @@ static esp_err_t init_sdmmc_host(int slot, const void *slot_config, int *out_slo
     return sdmmc_host_init_slot(slot, (const sdmmc_slot_config_t*) slot_config);
 }
 
-static esp_err_t init_sdspi_host_deprecated(int slot, const void *slot_config, int *out_slot)
-{
-    *out_slot = slot;
-    return sdspi_host_init_slot(slot, (const sdspi_slot_config_t*) slot_config);
-}
 
 esp_err_t esp_vfs_fat_sdmmc_mount(const char* base_path,
                                   const sdmmc_host_t* host_config,
@@ -210,28 +199,14 @@ esp_err_t esp_vfs_fat_sdmmc_mount(const char* base_path,
         return err;
     }
 
-    if (host_config->flags == SDMMC_HOST_FLAG_SPI) {
-        //Deprecated API
-        //the init() function is usually empty, doesn't require any deinit to revert it
-        err = (*host_config->init)();
-        CHECK_EXECUTE_RESULT(err, "host init failed");
-        err = init_sdspi_host_deprecated(host_config->slot, slot_config, &card_handle);
-        CHECK_EXECUTE_RESULT(err, "slot init failed");
-        //Set `host_inited` to true to indicate that host_config->deinit() needs
-        //to be called to revert `init_sdspi_host_deprecated`; set `card_handle`
-        //to -1 to indicate that no other deinit is required.
-        host_inited = true;
-        card_handle = -1;
-    } else {
-        err = (*host_config->init)();
-        CHECK_EXECUTE_RESULT(err, "host init failed");
-        //deinit() needs to be called to revert the init
-        host_inited = true;
-        //If this failed (indicated by card_handle != -1), slot deinit needs to called()
-        //leave card_handle as is to indicate that (though slot deinit not implemented yet.
-        err = init_sdmmc_host(host_config->slot, slot_config, &card_handle);
-        CHECK_EXECUTE_RESULT(err, "slot init failed");
-    }
+    err = (*host_config->init)();
+    CHECK_EXECUTE_RESULT(err, "host init failed");
+    //deinit() needs to be called to revert the init
+    host_inited = true;
+    //If this failed (indicated by card_handle != -1), slot deinit needs to called()
+    //leave card_handle as is to indicate that (though slot deinit not implemented yet.
+    err = init_sdmmc_host(host_config->slot, slot_config, &card_handle);
+    CHECK_EXECUTE_RESULT(err, "slot init failed");
 
     // probe and initialize card
     err = sdmmc_card_init(host_config, card);

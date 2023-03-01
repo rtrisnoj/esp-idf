@@ -1,16 +1,8 @@
-// Copyright 2015-2017 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,7 +13,7 @@
 #include "unity.h"
 #include "test_utils.h"
 #include "esp_log.h"
-#include "esp_system.h"
+#include "esp_random.h"
 #include "esp_vfs.h"
 #include "esp_vfs_fat.h"
 #include "freertos/FreeRTOS.h"
@@ -29,8 +21,11 @@
 #include "test_fatfs_common.h"
 #include "wear_levelling.h"
 #include "esp_partition.h"
+#include "esp_memory_utils.h"
 
 
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+//IDF-5136
 static wl_handle_t s_test_wl_handle;
 static void test_setup(void)
 {
@@ -39,12 +34,12 @@ static void test_setup(void)
         .max_files = 5
     };
 
-    TEST_ESP_OK(esp_vfs_fat_spiflash_mount("/spiflash", NULL, &mount_config, &s_test_wl_handle));
+    TEST_ESP_OK(esp_vfs_fat_spiflash_mount_rw_wl("/spiflash", NULL, &mount_config, &s_test_wl_handle));
 }
 
 static void test_teardown(void)
 {
-    TEST_ESP_OK(esp_vfs_fat_spiflash_unmount("/spiflash", s_test_wl_handle));
+    TEST_ESP_OK(esp_vfs_fat_spiflash_unmount_rw_wl("/spiflash", s_test_wl_handle));
 }
 
 TEST_CASE("(WL) can format partition", "[fatfs][wear_levelling]")
@@ -92,9 +87,9 @@ TEST_CASE("(WL) can open maximum number of files", "[fatfs][wear_levelling]")
         .format_if_mount_failed = true,
         .max_files = max_files
     };
-    TEST_ESP_OK(esp_vfs_fat_spiflash_mount("/spiflash", NULL, &mount_config, &s_test_wl_handle));
+    TEST_ESP_OK(esp_vfs_fat_spiflash_mount_rw_wl("/spiflash", NULL, &mount_config, &s_test_wl_handle));
     test_fatfs_open_max_files("/spiflash/f", max_files);
-    TEST_ESP_OK(esp_vfs_fat_spiflash_unmount("/spiflash", s_test_wl_handle));
+    TEST_ESP_OK(esp_vfs_fat_spiflash_unmount_rw_wl("/spiflash", s_test_wl_handle));
 }
 
 TEST_CASE("(WL) overwrite and append file", "[fatfs][wear_levelling]")
@@ -122,6 +117,13 @@ TEST_CASE("(WL) stat returns correct values", "[fatfs][wear_levelling]")
 {
     test_setup();
     test_fatfs_stat("/spiflash/stat.txt", "/spiflash");
+    test_teardown();
+}
+
+TEST_CASE("(WL) stat returns correct mtime if DST is enabled", "[fatfs][wear_levelling]")
+{
+    test_setup();
+    test_fatfs_mtime_dst("/spiflash/statdst.txt", "/spiflash");
     test_teardown();
 }
 
@@ -202,12 +204,23 @@ TEST_CASE("(WL) write/read speed test", "[fatfs][wear_levelling][timeout=60]")
     test_teardown();
 }
 
+TEST_CASE("(WL) can get partition info", "[fatfs][wear_levelling]")
+{
+    test_setup();
+    test_fatfs_info("/spiflash", "/spiflash/test.txt");
+    test_teardown();
+}
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+
 /*
  * In FatFs menuconfig, set CONFIG_FATFS_API_ENCODING to UTF-8 and set the
  * Codepage to CP936 (Simplified Chinese) in order to run the following tests.
  * Ensure that the text editor is UTF-8 compatible when compiling these tests.
  */
 #if defined(CONFIG_FATFS_API_ENCODING_UTF_8) && (CONFIG_FATFS_CODEPAGE == 936)
+
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+//IDF-5136
 TEST_CASE("(WL) can read file with UTF-8 encoded strings", "[fatfs][wear_levelling]")
 {
     test_setup();
@@ -222,7 +235,8 @@ TEST_CASE("(WL) opendir, readdir, rewinddir, seekdir work as expected using UTF-
     test_fatfs_opendir_readdir_rewinddir_utf_8("/spiflash/目录");
     test_teardown();
 }
-#endif
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+#endif //defined(CONFIG_FATFS_API_ENCODING_UTF_8) && (CONFIG_FATFS_CODEPAGE == 936)
 
 #ifdef CONFIG_SPIRAM
 TEST_CASE("FATFS prefers SPI RAM for allocations", "[fatfs]")
