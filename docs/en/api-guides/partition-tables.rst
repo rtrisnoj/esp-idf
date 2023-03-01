@@ -88,6 +88,7 @@ The ESP-IDF bootloader ignores any partition types other than ``app`` (0x00) and
 
 SubType
 ~~~~~~~
+{IDF_TARGET_ESP_PHY_REF:default = ":ref:`CONFIG_ESP_PHY_INIT_DATA_IN_PARTITION`", esp32c2 = "(not updated yet)"}
 
 The 8-bit subtype field is specific to a given partition type. ESP-IDF currently only specifies the meaning of the subtype field for ``app`` and ``data`` partition types.
 
@@ -109,7 +110,7 @@ See enum :cpp:type:`esp_partition_subtype_t` for the full list of subtypes defin
   - ``phy`` (1) is for storing PHY initialisation data. This allows PHY to be configured per-device, instead of in firmware.
 
     - In the default configuration, the phy partition is not used and PHY initialisation data is compiled into the app itself. As such, this partition can be removed from the partition table to save space.
-    - To load PHY data from this partition, open the project configuration menu (``idf.py menuconfig``) and enable :ref:`CONFIG_ESP_PHY_INIT_DATA_IN_PARTITION` option. You will also need to flash your devices with phy init data as the esp-idf build system does not do this automatically.
+    - To load PHY data from this partition, open the project configuration menu (``idf.py menuconfig``) and enable {IDF_TARGET_ESP_PHY_REF} option. You will also need to flash your devices with phy init data as the esp-idf build system does not do this automatically.
   - ``nvs`` (2) is for the :doc:`Non-Volatile Storage (NVS) API <../api-reference/storage/nvs_flash>`.
 
     - NVS is used to store per-device PHY calibration data (different to initialisation data).
@@ -129,6 +130,11 @@ See enum :cpp:type:`esp_partition_subtype_t` for the full list of subtypes defin
 * If the partition type is any application-defined value (range 0x40-0xFE), then ``subtype`` field can be any value chosen by the application (range 0x00-0xFE).
 
   Note that when writing in C++, an application-defined subtype value requires casting to type :cpp:type:`esp_partition_subtype_t` in order to use it with the :ref:`partition API<api-reference-partition-table>`.
+
+Extra Partition SubTypes
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A component can define a new partition subtype by setting the ``EXTRA_PARTITION_SUBTYPES`` property. This property is a CMake list, each entry of which is a comma separated string with ``<type>, <subtype>, <value>`` format. The build system uses this property to add extra subtypes and creates fields named ``ESP_PARTITION_SUBTYPE_<type>_<subtype>`` in :cpp:type:`esp_partition_type_t`. The project can use this subtype to define partitions in the partitions table CSV file and use the new fields in :cpp:type:`esp_partition_type_t`.
 
 Offset & Size
 ~~~~~~~~~~~~~
@@ -183,10 +189,6 @@ Currently these checks are performed for the following binaries:
 
    Although the build process will fail if the size check returns an error, the binary files are still generated and can be flashed (although they may not work if they are too large for the available space.)
 
-.. note::
-
-   Build system binary size checks are only performed when using the CMake build system. When using the legacy GNU Make build system, file sizes can be checked manually or an error will be logged during boot.
-
 MD5 checksum
 ~~~~~~~~~~~~
 
@@ -194,7 +196,7 @@ The binary format of the partition table contains an MD5 checksum computed based
 
 .. only:: esp32
 
-    The MD5 checksum generation can be disabled by the ``--disable-md5sum`` option of ``gen_esp32part.py`` or by the :ref:`CONFIG_PARTITION_TABLE_MD5` option. This is useful for example when one :ref:`uses a bootloader from ESP-IDF before v3.1 <CONFIG_ESP32_COMPATIBLE_PRE_V3_1_BOOTLOADERS>` which cannot process MD5 checksums and the boot fails with the error message ``invalid magic number 0xebeb``.
+    The MD5 checksum generation can be disabled by the ``--disable-md5sum`` option of ``gen_esp32part.py`` or by the :ref:`CONFIG_PARTITION_TABLE_MD5` option. This is useful for example when one :ref:`uses a bootloader from ESP-IDF before v3.1 <CONFIG_APP_COMPATIBLE_PRE_V3_1_BOOTLOADERS>` which cannot process MD5 checksums and the boot fails with the error message ``invalid magic number 0xebeb``.
 
 .. only:: not esp32
 

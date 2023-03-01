@@ -6,33 +6,36 @@
 .. toctree::
     :maxdepth: 1
 
-    adc
+    adc_oneshot
+    :SOC_ADC_DMA_SUPPORTED: adc_continuous
+    adc_calibration
+    clk_tree
     :SOC_DAC_SUPPORTED: dac
     gpio
-    timer
+    gptimer
     :SOC_DEDICATED_GPIO_SUPPORTED: dedic_gpio
     :SOC_HMAC_SUPPORTED: hmac
     :SOC_DIG_SIGN_SUPPORTED: ds
     i2c
-    i2s
+    :SOC_I2S_SUPPORTED: i2s
     lcd
     ledc
     :SOC_MCPWM_SUPPORTED: mcpwm
     :SOC_PCNT_SUPPORTED: pcnt
-    rmt
+    :SOC_RMT_SUPPORTED: rmt
     :SOC_SDMMC_HOST_SUPPORTED: sd_pullup_requirements
     :SOC_SDMMC_HOST_SUPPORTED: sdmmc_host
     sdspi_host
     :SOC_SDIO_SLAVE_SUPPORTED: sdio_slave
-    sigmadelta
+    :SOC_SDM_SUPPORTED: sdm
     spi_master
     spi_slave
     :esp32: secure_element
     :esp32s2: spi_slave_hd
     :SOC_TEMP_SENSOR_SUPPORTED: temp_sensor
-    :SOC_TOUCH_SENSOR_NUM: touch_pad
+    :SOC_TOUCH_SENSOR_SUPPORTED: touch_pad
     :esp32s2: touch_element
-    twai
+    :SOC_TWAI_SUPPORTED: twai
     uart
     :SOC_USB_OTG_SUPPORTED: usb_device
     :SOC_USB_OTG_SUPPORTED: usb_host

@@ -133,7 +133,7 @@ Ethernet driver is composed of two parts: MAC and PHY.
     * Some EMAC controller can generate the ``REF_CLK`` using its internal high precision PLL (as seen the option *c* in the picture). In this case, you should select ``CONFIG_ETH_RMII_CLK_OUTPUT`` in :ref:`CONFIG_ETH_RMII_CLK_MODE`.
 
     .. note::
-        ``REF_CLK`` is configured via Project Configuration as described above by default. However, it can be overwritten from user application code by appropriately setting :cpp:member:`interface` and :cpp:member:`clock_config` members of :cpp:class:`eth_mac_config_t` structure. See :cpp:enum:`emac_rmii_clock_mode_t` and :cpp:enum:`emac_rmii_clock_gpio_t` for more details.
+        ``REF_CLK`` is configured via Project Configuration as described above by default. However, it can be overwritten from user application code by appropriately setting :cpp:member:`eth_esp32_emac_config_t::interface` and :cpp:member:`eth_esp32_emac_config_t::clock_config` members. See :cpp:enum:`emac_rmii_clock_mode_t` and :cpp:enum:`emac_rmii_clock_gpio_t` for more details.
 
     .. warning::
         If the RMII clock mode is selected to ``CONFIG_ETH_RMII_CLK_OUTPUT``, then ``GPIO0`` can be used to output the ``REF_CLK`` signal. See :ref:`CONFIG_ETH_RMII_CLK_OUTPUT_GPIO0` for more information.
@@ -164,21 +164,21 @@ Configuration for MAC is described in :cpp:class:`eth_mac_config_t`, including:
 
 .. list::
 
-    * :cpp:member:`sw_reset_timeout_ms`: software reset timeout value, in milliseconds, typically MAC reset should be finished within 100ms.
-    * :cpp:member:`rx_task_stack_size` and :cpp:member:`rx_task_prio`: the MAC driver creates a dedicated task to process incoming packets, these two parameters are used to set the stack size and priority of the task.
-    * :cpp:member:`flags`: specifying extra features that the MAC driver should have, it could be useful in some special situations. The value of this field can be OR'd with macros prefixed with ``ETH_MAC_FLAG_``. For example, if the MAC driver should work when cache is disabled, then you should configure this field with :c:macro:`ETH_MAC_FLAG_WORK_WITH_CACHE_DISABLE`.
-    :SOC_EMAC_SUPPORTED: * :cpp:member:`smi_mdc_gpio_num` and :cpp:member:`smi_mdio_gpio_num`: the GPIO number used to connect the SMI signals.
-    :SOC_EMAC_SUPPORTED: * :cpp:member:`interface`: configuration of MAC Data interface to PHY (MII/RMII).
-    :SOC_EMAC_SUPPORTED: * :cpp:member:`clock_config`: configuration of EMAC Interface clock (``REF_CLK`` mode and GPIO number in case of RMII).
+    * :cpp:member:`eth_mac_config_t::sw_reset_timeout_ms`: software reset timeout value, in milliseconds, typically MAC reset should be finished within 100ms.
+    * :cpp:member:`eth_mac_config_t::rx_task_stack_size` and :cpp:member:`eth_mac_config_t::rx_task_prio`: the MAC driver creates a dedicated task to process incoming packets, these two parameters are used to set the stack size and priority of the task.
+    * :cpp:member:`eth_mac_config_t::flags`: specifying extra features that the MAC driver should have, it could be useful in some special situations. The value of this field can be OR'd with macros prefixed with ``ETH_MAC_FLAG_``. For example, if the MAC driver should work when cache is disabled, then you should configure this field with :c:macro:`ETH_MAC_FLAG_WORK_WITH_CACHE_DISABLE`.
+    :SOC_EMAC_SUPPORTED: * :cpp:member:`eth_esp32_emac_config_t::smi_mdc_gpio_num` and :cpp:member:`eth_esp32_emac_config_t::smi_mdio_gpio_num`: the GPIO number used to connect the SMI signals.
+    :SOC_EMAC_SUPPORTED: * :cpp:member:`eth_esp32_emac_config_t::interface`: configuration of MAC Data interface to PHY (MII/RMII).
+    :SOC_EMAC_SUPPORTED: * :cpp:member:`eth_esp32_emac_config_t::clock_config`: configuration of EMAC Interface clock (``REF_CLK`` mode and GPIO number in case of RMII).
 
 Configuration for PHY is described in :cpp:class:`eth_phy_config_t`, including:
 
 .. list::
 
-    * :cpp:member:`phy_addr`: multiple PHY device can share the same SMI bus, so each PHY needs a unique address. Usually this address is configured during hardware design by pulling up/down some PHY strapping pins. You can set the value from 0 to 15 based on your Ethernet board. Especially, if the SMI bus is shared by only one PHY device, setting this value to -1 can enable the driver to detect the PHY address automatically.
-    * :cpp:member:`reset_timeout_ms`: reset timeout value, in milliseconds, typically PHY reset should be finished within 100ms.
-    * :cpp:member:`autonego_timeout_ms`: auto-negotiation timeout value, in milliseconds. Ethernet driver will start negotiation with the peer Ethernet node automatically, to determine to duplex and speed mode. This value usually depends on the ability of the PHY device on your board.
-    * :cpp:member:`reset_gpio_num`: if your board also connect the PHY reset pin to one of the GPIO, then set it here. Otherwise, set this field to -1.
+    * :cpp:member:`eth_phy_config_t::phy_addr`: multiple PHY device can share the same SMI bus, so each PHY needs a unique address. Usually this address is configured during hardware design by pulling up/down some PHY strapping pins. You can set the value from 0 to 15 based on your Ethernet board. Especially, if the SMI bus is shared by only one PHY device, setting this value to -1 can enable the driver to detect the PHY address automatically.
+    * :cpp:member:`eth_phy_config_t::reset_timeout_ms`: reset timeout value, in milliseconds, typically PHY reset should be finished within 100ms.
+    * :cpp:member:`eth_phy_config_t::autonego_timeout_ms`: auto-negotiation timeout value, in milliseconds. Ethernet driver will start negotiation with the peer Ethernet node automatically, to determine to duplex and speed mode. This value usually depends on the ability of the PHY device on your board.
+    * :cpp:member:`eth_phy_config_t::reset_gpio_num`: if your board also connect the PHY reset pin to one of the GPIO, then set it here. Otherwise, set this field to -1.
 
 ESP-IDF provides a default configuration for MAC and PHY in macro :c:macro:`ETH_MAC_DEFAULT_CONFIG` and :c:macro:`ETH_PHY_DEFAULT_CONFIG`.
 
@@ -253,18 +253,15 @@ SPI-Ethernet Module
         .quadhd_io_num = -1,
     };
     ESP_ERROR_CHECK(spi_bus_initialize(CONFIG_EXAMPLE_ETH_SPI_HOST, &buscfg, 1));
-    // Allocate SPI device from the bus
-    spi_device_interface_config_t devcfg = {
-        .command_bits = 1,
-        .address_bits = 7,
+    // Configure SPI device
+    spi_device_interface_config_t spi_devcfg = {
         .mode = 0,
         .clock_speed_hz = CONFIG_EXAMPLE_ETH_SPI_CLOCK_MHZ * 1000 * 1000,
         .spics_io_num = CONFIG_EXAMPLE_ETH_SPI_CS_GPIO,
         .queue_size = 20
     };
-    ESP_ERROR_CHECK(spi_bus_add_device(CONFIG_EXAMPLE_ETH_SPI_HOST, &devcfg, &spi_handle));
     /* dm9051 ethernet driver is based on spi driver */
-    eth_dm9051_config_t dm9051_config = ETH_DM9051_DEFAULT_CONFIG(spi_handle);
+    eth_dm9051_config_t dm9051_config = ETH_DM9051_DEFAULT_CONFIG(CONFIG_EXAMPLE_ETH_SPI_HOST, &spi_devcfg);
     dm9051_config.int_gpio_num = CONFIG_EXAMPLE_ETH_SPI_INT_GPIO;
     esp_eth_mac_t *mac = esp_eth_mac_new_dm9051(&dm9051_config, &mac_config);
     esp_eth_phy_t *phy = esp_eth_phy_new_dm9051(&phy_config);
@@ -272,8 +269,7 @@ SPI-Ethernet Module
 
 .. note::
     * When creating MAC and PHY instance for SPI-Ethernet modules (e.g. DM9051), the constructor function must have the same suffix (e.g. `esp_eth_mac_new_dm9051` and `esp_eth_phy_new_dm9051`). This is because we don't have other choices but the integrated PHY.
-    * We have to create an SPI device handle firstly and then pass it to the MAC constructor function. More instructions on creating SPI device handle, please refer to :doc:`SPI Master <../peripherals/spi_master>`.
-    * The SPI device configuration (i.e. `spi_device_interface_config_t`) can be different for other Ethernet modules. Please check out your module's spec and the examples in esp-idf.
+    * The SPI device configuration (i.e. `spi_device_interface_config_t`) may slightly differ for other Ethernet modules or to meet SPI timing on specific PCB. Please check out your module's spec and the examples in esp-idf.
 
 
 Install Driver
@@ -281,11 +277,11 @@ Install Driver
 
 To install the Ethernet driver, we need to combine the instance of MAC and PHY and set some additional high-level configurations (i.e. not specific to either MAC or PHY) in :cpp:class:`esp_eth_config_t`:
 
-* :cpp:member:`mac`: instance that created from MAC generator (e.g. :cpp:func:`esp_eth_mac_new_esp32`).
-* :cpp:member:`phy`: instance that created from PHY generator (e.g. :cpp:func:`esp_eth_phy_new_ip101`).
-* :cpp:member:`check_link_period_ms`: Ethernet driver starts an OS timer to check the link status periodically, this field is used to set the interval, in milliseconds.
-* :cpp:member:`stack_input`: In most of Ethernet IoT applications, any Ethernet frame that received by driver should be passed to upper layer (e.g. TCP/IP stack). This field is set to a function which is responsible to deal with the incoming frames. You can even update this field at runtime via function :cpp:func:`esp_eth_update_input_path` after driver installation.
-* :cpp:member:`on_lowlevel_init_done` and :cpp:member:`on_lowlevel_deinit_done`: These two fields are used to specify the hooks which get invoked when low level hardware has been initialized or de-initialized.
+* :cpp:member:`esp_eth_config_t::mac`: instance that created from MAC generator (e.g. :cpp:func:`esp_eth_mac_new_esp32`).
+* :cpp:member:`esp_eth_config_t::phy`: instance that created from PHY generator (e.g. :cpp:func:`esp_eth_phy_new_ip101`).
+* :cpp:member:`esp_eth_config_t::check_link_period_ms`: Ethernet driver starts an OS timer to check the link status periodically, this field is used to set the interval, in milliseconds.
+* :cpp:member:`esp_eth_config_t::stack_input`: In most of Ethernet IoT applications, any Ethernet frame that received by driver should be passed to upper layer (e.g. TCP/IP stack). This field is set to a function which is responsible to deal with the incoming frames. You can even update this field at runtime via function :cpp:func:`esp_eth_update_input_path` after driver installation.
+* :cpp:member:`esp_eth_config_t::on_lowlevel_init_done` and :cpp:member:`esp_eth_config_t::on_lowlevel_deinit_done`: These two fields are used to specify the hooks which get invoked when low level hardware has been initialized or de-initialized.
 
 ESP-IDF provides a default configuration for driver installation in macro :c:macro:`ETH_DEFAULT_CONFIG`.
 
@@ -428,17 +424,62 @@ Ethernet on MCU usually has a limitation in the number of frames it can handle d
 
 Pause frame is a special Ethernet frame used to carry the pause command, whose EtherType field is 0x8808, with the Control opcode set to 0x0001. Only stations configured for full-duplex operation may send pause frames. When a station wishes to pause the other end of a link, it sends a pause frame to the 48-bit reserved multicast address of 01-80-C2-00-00-01. The pause frame also includes the period of pause time being requested, in the form of a two-byte integer, ranging from 0 to 65535.
 
-After Ethernet driver installation, the flow control feature is disabled by default. You can enable it by invoking `esp_eth_ioctl(eth_handle, ETH_CMD_S_FLOW_CTRL, true);`. One thing should be kept in mind, is that the pause frame ability will be advertised to peer end by PHY during auto negotiation. Ethernet driver sends pause frame only when both sides of the link support it.
+After Ethernet driver installation, the flow control feature is disabled by default. You can enable it by:
+
+.. highlight:: c
+
+::
+
+    bool flow_ctrl_enable = true;
+    esp_eth_ioctl(eth_handle, ETH_CMD_S_FLOW_CTRL, &flow_ctrl_enable);
+
+One thing should be kept in mind, is that the pause frame ability will be advertised to peer end by PHY during auto negotiation. Ethernet driver sends pause frame only when both sides of the link support it.
 
 .. -------------------------------- Examples -----------------------------------
 
-Application Example
--------------------
+Application Examples
+--------------------
 
   * Ethernet basic example: :example:`ethernet/basic`.
   * Ethernet iperf example: :example:`ethernet/iperf`.
   * Ethernet to Wi-Fi AP "router": :example:`ethernet/eth2ap`.
   * Most of protocol examples should also work for Ethernet: :example:`protocols`.
+
+.. ------------------------------ Advanced Topics -------------------------------
+
+.. _advanced-topics:
+
+Advanced Topics
+---------------
+
+Custom PHY Driver
+^^^^^^^^^^^^^^^^^
+
+There are multiple PHY manufactures with their wide portfolios of chips available. The ESP-IDF already supports several PHY chips however one can easily get to a point where none of them satisfies user's actual needs due to either price, features, stock availability etc. 
+
+Luckily, a management interface between EMAC and PHY is standardized by IEEE 802.3 in 22.2.4 Management functions section. It defines provisions of so called “MII Management Interface” for the purposes of controlling the PHY and gathering status from the PHY. A set of management registers is defined to control chip behavior, link properties, auto-negotiation configuration etc. This basic management functionality is addressed by :component_file:`esp_eth/src/esp_eth_phy_802_3.c` in ESP-IDF and so it makes a creation of new custom PHY chip driver quite a simple task.
+
+.. note::
+    Always consult with PHY datasheet since some PHY chips may not comply with IEEE 802.3, Section 22.2.4. It does not mean you are not able to create a custom PHY driver, it will just require more effort. You will have to define all PHY management functions. 
+
+Majority of PHY management functionality required by the ESP-IDF Ethernet driver is covered by the :component_file:`esp_eth/src/esp_eth_phy_802_3.c` however, the following may require developing chip specific management functions:
+
+    * link status which is almost always chip specific,
+    * chip initialization, even though it is not strictly required, should be customized to at least ensure that expected chip is used and
+    * chip specific features configuration.
+
+**Steps to create custom PHY driver:**
+
+1. Define vendor specific registry layout based on PHY datasheet. See :component_file:`esp_eth/src/esp_eth_phy_ip101.c` as an example.
+2. Prepare derived PHY management object infostructure which
+
+    * must contain at least parent IEEE 802.3 :cpp:class:`phy_802_3_t` object and
+    * optionally contain additional variables needed to support non-IEEE 802.3 or customized functionality. See :component_file:`esp_eth/src/esp_eth_phy_ksz80xx.c` as an example.
+
+3. Define chip specific management call-back functions.
+4. Initialize parent IEEE 802.3 object and re-assign chip specific management call-back functions.
+
+Once you finish the new custom PHY driver implementation, consider sharing it among with other users via `IDF Component Registry <https://components.espressif.com/>`_.
 
 .. ---------------------------- API Reference ----------------------------------
 
@@ -446,7 +487,9 @@ API Reference
 -------------
 
 .. include-build-file:: inc/esp_eth.inc
+.. include-build-file:: inc/esp_eth_driver.inc
 .. include-build-file:: inc/esp_eth_com.inc
 .. include-build-file:: inc/esp_eth_mac.inc
 .. include-build-file:: inc/esp_eth_phy.inc
+.. include-build-file:: inc/esp_eth_phy_802_3.inc
 .. include-build-file:: inc/esp_eth_netif_glue.inc

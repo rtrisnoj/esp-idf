@@ -4,8 +4,10 @@ Tools
 .. toctree::
    :maxdepth: 1
 
-   IDF Tools <idf-tools>
-   IDF Monitor <idf-monitor>
-   IDF Docker image <idf-docker-image>
-   IDF Windows Installer <idf-windows-installer>
-   IDF Component Manager <idf-component-manager>
+   idf-py
+   idf-monitor
+   idf-docker-image
+   idf-windows-installer
+   idf-component-manager
+   idf-clang-tidy
+   idf-tools

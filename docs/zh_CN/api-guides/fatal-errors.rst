@@ -14,15 +14,15 @@
 
   .. list::
 
-     - :doc:`中断看门狗 <../api-reference/system/wdts>` 超时
-     - :doc:`任务看门狗 <../api-reference/system/wdts>` 超时（只有开启 :ref:`CONFIG_ESP_TASK_WDT_PANIC` 后才会触发严重错误）
-     - 高速缓存访问错误
-     :CONFIG_ESP_SYSTEM_MEMPROT_FEATURE: - 内存保护故障
-     - 掉电检测事件
-     - 堆栈溢出
-     - 堆栈粉碎保护检查
-     - 堆完整性检查
-     - 未定义行为清理器（UBSAN）检查
+      - :doc:`中断看门狗 <../api-reference/system/wdts>` 超时
+      - :doc:`任务看门狗 <../api-reference/system/wdts>` 超时（只有开启 :ref:`CONFIG_ESP_TASK_WDT_PANIC` 后才会触发严重错误）
+      - 高速缓存访问错误
+      :CONFIG_ESP_SYSTEM_MEMPROT_FEATURE: - 内存保护故障
+      - 掉电检测事件
+      - 堆栈溢出
+      - 堆栈粉碎保护检查
+      - 堆完整性检查
+      - 未定义行为清理器 (UBSAN) 检查
 
 - 使用 ``assert``、``configASSERT`` 等类似的宏断言失败。
 
@@ -31,7 +31,7 @@
 紧急处理程序
 ------------
 
-:ref:`Overview` 中列举的所有错误都会由 *紧急处理程序 (Panic Handler)* 负责处理。
+:ref:`Overview` 中列举的所有错误都会由 *紧急处理程序（Panic Handler）* 负责处理。
 
 紧急处理程序首先会将出错原因打印到控制台，例如 CPU 异常的错误信息通常会类似于
 
@@ -68,10 +68,10 @@
 - 调用动态 GDB Stub (``ESP_SYSTEM_GDBSTUB_RUNTIME``)
 
   启动 GDB 服务器，通过控制台 UART 接口与 GDB 进行通信。该选项允许用户在程序运行时对其进行调试、设置断点和改变其执行方式等，详细信息请参阅 `GDB Stub`_。
-  
+
 紧急处理程序的行为还受到另外两个配置项的影响：
 
-- 如果使能了 :ref:`CONFIG_{IDF_TARGET_CFG_PREFIX}_DEBUG_OCDAWARE` （默认），紧急处理程序会检测 {IDF_TARGET_NAME} 是否已经连接 JTAG 调试器。如果检测成功，程序会暂停运行，并将控制权交给调试器。在这种情况下，寄存器和回溯不会被打印到控制台，并且也不会使用 GDB Stub 和 Core Dump 的功能。
+- 如果使能了 :ref:`CONFIG_ESP_DEBUG_OCDAWARE` （默认），紧急处理程序会检测 {IDF_TARGET_NAME} 是否已经连接 JTAG 调试器。如果检测成功，程序会暂停运行，并将控制权交给调试器。在这种情况下，寄存器和回溯不会被打印到控制台，并且也不会使用 GDB Stub 和 Core Dump 的功能。
 
 - 如果使能了 :doc:`内核转储 <core_dump>` 功能，系统状态（任务堆栈和寄存器）会被转储到 flash 或者 UART 以供后续分析。
 
@@ -161,7 +161,7 @@
 
 仅会打印异常帧中 CPU 寄存器的值，即引发 CPU 异常或者其它严重错误时刻的值。
 
-紧急处理程序如果是因 ``abort()`` 而调用，则不会打印寄存器转储。
+紧急处理程序如果是因 abort() 而调用，则不会打印寄存器转储。
 
 .. only:: CONFIG_IDF_TARGET_ARCH_XTENSA
 
@@ -234,16 +234,16 @@
     虽然以上的回溯信息非常方便，但要求用户使用 :doc:`IDF 监视器 <tools/idf-monitor>`。因此，如果用户希望使用其它的串口监控软件也能显示堆栈回溯信息，则需要在 menuconfig 中启用 :ref:`CONFIG_ESP_SYSTEM_USE_EH_FRAME` 选项。
 
     该选项会让编译器为项目的每个函数生成 DWARF 信息。然后，当 CPU 异常发生时，紧急处理程序将解析这些数据并生成出错任务的堆栈回溯信息。输出结果如下：
-    
+
     ::
 
-        Backtrace: 0x42009e9a:0x3fc92120 0x42009ea6:0x3fc92120 0x42009ec2:0x3fc92130 0x42024620:0x3fc92150 0x40387d7c:0x3fc92160 0xfffffffe:0x3fc92170    
-    
+        Backtrace: 0x42009e9a:0x3fc92120 0x42009ea6:0x3fc92120 0x42009ec2:0x3fc92130 0x42024620:0x3fc92150 0x40387d7c:0x3fc92160 0xfffffffe:0x3fc92170
+
     这些 ``PC:SP`` 对代表当前任务每一个栈帧的程序计数器值（Program Counter）和栈顶地址（Stack Pointer）。
 
 
     :ref:`CONFIG_ESP_SYSTEM_USE_EH_FRAME` 选项的主要优点是，回溯信息可以由程序自己解析生成并打印 (而不依靠 :doc:`IDF 监视器 <tools/idf-monitor>`)。但是该选项会导致编译后的二进制文件更大（增幅可达 20% 甚至 100%）。此外，该选项会将调试信息也保存在二进制文件里。因此，强烈不建议用户在量产/生产版本中启用该选项。
-    
+
 若要查找发生严重错误的代码位置，请查看 "Backtrace" 的后面几行，发生严重错误的代码显示在顶行，后续几行显示的是调用堆栈。
 
 .. _GDB-Stub:
@@ -279,6 +279,27 @@ GDB Stub
 
 在 GDB 会话中，我们可以检查 CPU 寄存器，本地和静态变量以及内存中任意位置的值。但是不支持设置断点，改变 PC 值或者恢复程序的运行。若要复位程序，请退出 GDB 会话，在 IDF 监视器 中连续输入 Ctrl-T Ctrl-R，或者按下开发板上的复位按键也可以重新运行程序。
 
+.. _RTC-Watchdog-Timeout:
+
+RTC 看门狗超时
+----------------
+
+RTC 看门狗在启动代码中用于跟踪执行时间，也有助于防止由于电源不稳定引起的锁定。RTC 看门狗默认启用，参见 :ref:`CONFIG_BOOTLOADER_WDT_ENABLE`。如果执行时间超时，RTC 看门狗将自动重启系统。此时，ROM 引导加载程序将打印消息 ``RTC Watchdog Timeout`` 说明重启原因。
+
+.. only:: esp32
+
+    ::
+
+        rst:0x10 (RTCWDT_RTC_RESET)
+
+.. only:: not esp32
+
+    ::
+
+        rst:0x10 (RTCWDT_RTC_RST)
+
+RTC 看门狗涵盖了从一级引导程序（ROM 引导程序）到应用程序启动的执行时间，最初在 ROM 引导程序中设置，而后在引导程序中使用 :ref:`CONFIG_BOOTLOADER_WDT_TIME_MS` 选项进行配置（默认 9000 ms）。在应用初始化阶段，由于慢速时钟源可能已更改，RTC 看门狗将被重新配置，最后在调用 ``app_main()`` 之前被禁用。可以使用选项 :ref:`CONFIG_BOOTLOADER_WDT_DISABLE_IN_USER_CODE` 以保证 RTC 看门狗在调用 ``app_main`` 之前不被禁用，而是保持运行状态，用户需要在应用代码中定期“喂狗”。
+
 .. _Guru-Meditation-Errors:
 
 Guru Meditation 错误
@@ -302,9 +323,11 @@ Guru Meditation 错误
 
 - 无法从 SPI flash 中读取下一条指令，这通常发生在：
 
-  - 应用程序将 SPI flash 的管脚重新配置为其它功能（如 GPIO、UART 等等）。有关 SPI flash 管脚的详细信息，请参阅硬件设计指南和芯片/模组的数据手册。
+  - 应用程序将 SPI flash 的管脚重新配置为其它功能（如 GPIO、UART 等）。有关 SPI flash 管脚的详细信息，请参阅硬件设计指南和芯片/模组的数据手册。
 
   - 某些外部设备意外连接到 SPI flash 的管脚上，干扰了 {IDF_TARGET_NAME} 和 SPI flash 之间的通信。
+
+- 在 C++ 代码中，退出 non-void 函数而无返回值被认为是未定义的行为。启用优化后，编译器通常会忽略此类函数的结尾，导致 |ILLEGAL_INSTR_MSG| 异常。默认情况下，ESP-IDF 构建系统启用 ``-Werror=return-type``，这意味着缺少返回语句会被视为编译时错误。但是，如果应用程序项目禁用了编译器警告，可能就无法检测到该问题，在运行时就会出现 |ILLEGAL_INSTR_MSG| 异常。
 
 .. only:: CONFIG_IDF_TARGET_ARCH_XTENSA
 
@@ -349,7 +372,7 @@ Guru Meditation 错误
     此错误表示应用程序写入的位置越过了 ``task_name`` 任务堆栈的末尾，请注意，并非每次堆栈溢出都会触发此错误。任务有可能会绕过堆栈金丝雀（stack canary）的位置访问内存，在这种情况下，监视点就不会被触发。
 
 .. only:: CONFIG_IDF_TARGET_ARCH_RISCV
-    
+
     Instruction address misaligned
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -400,7 +423,7 @@ Interrupt wdt timeout on CPU0 / CPU1
 掉电
 ^^^^
 
-{IDF_TARGET_NAME} 内部集成掉电检测电路，并且会默认启用。如果电源电压低于安全值，掉电检测器可以触发系统复位。掉电检测器可以使用 :ref:`CONFIG_{IDF_TARGET_CFG_PREFIX}_BROWNOUT_DET` 和 :ref:`CONFIG_{IDF_TARGET_CFG_PREFIX}_BROWNOUT_DET_LVL_SEL` 这两个选项进行设置。
+{IDF_TARGET_NAME} 内部集成掉电检测电路，并且会默认启用。如果电源电压低于安全值，掉电检测器可以触发系统复位。掉电检测器可以使用 :ref:`CONFIG_ESP_BROWNOUT_DET` 和 :ref:`CONFIG_ESP_BROWNOUT_DET_LVL_SEL` 这两个选项进行设置。
 
 当掉电检测器被触发时，会打印如下信息::
 
@@ -508,6 +531,7 @@ UBSAN 输出
     0x400db99c: app_main at main.c:56 (discriminator 1)
 
 UBSAN 报告的错误类型为以下几种：
+
 
 .. list-table::
   :widths: 40 60

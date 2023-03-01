@@ -8,7 +8,6 @@
 
 所有版本的 |devkit-name| 板子都内置了 JTAG 调试功能，要使其正常工作，还需要设置相关跳帽来启用 JTAG 功能，设置 SPI 闪存电压和配置 USB 驱动程序。具体步骤请参考以下说明。
 
-
 配置硬件
 ^^^^^^^^
 
@@ -35,7 +34,7 @@ Windows
 
 1.  使用标准 USB A / micro USB B 线将 |devkit-name| 与计算机相连接，并打开板子的电源。
 
-2.  等待 Windows 识别出 |devkit-name| 并且为其安装驱动。如果驱动没有被自动安装，请前往 `官网 <https://www.ftdichip.com/Drivers/D2XX.htm>`_ 下载并手动安装。
+2.  等待 Windows 识别出 |devkit-name| 并且为其安装驱动。如果驱动没有被自动安装，请前往 `官网 <https://ftdichip.com/drivers/d2xx-drivers/>`_ 下载并手动安装。
 
 3.  从 `Zadig 官网 <http://zadig.akeo.ie/>`_ 下载 Zadig 工具（Zadig_X.X.exe）并运行。
 
@@ -104,7 +103,7 @@ MacOS
 手动卸载驱动程序
 ................
 
-1. 从 `FTDI 官网 <https://www.ftdichip.com/Drivers/VCP.htm>`_ 安装驱动。
+1. 从 `FTDI 官网 <https://ftdichip.com/drivers/vcp-drivers/>`_ 安装驱动。
 
 2. 使用 USB 线连接 |devkit-name|。
 

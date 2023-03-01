@@ -83,12 +83,8 @@ Notes
 
     This should cause the linker to always include the file defining ``ld_include_my_isr_file``, causing the ISR to always be linked in.
 
-This should cause the linker to always include a file defining ``ld_include_my_isr_file``, causing the ISR to always be linked in.
  - High-level interrupts can be routed and handled using :cpp:func:`esp_intr_alloc` and associated functions. The handler and handler arguments
    to :cpp:func:`esp_intr_alloc` must be NULL, however.
 
  - In theory, medium priority interrupts could also be handled in this way. ESP-IDF does not support this yet.
 
-If using the legacy Make build system, add the following to component.mk, instead::
-
-   COMPONENT_ADD_LDFLAGS := -u ld_include_my_isr_file

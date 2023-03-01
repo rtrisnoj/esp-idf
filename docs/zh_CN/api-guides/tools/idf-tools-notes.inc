@@ -4,6 +4,16 @@
 .. before processing :start-after: and :end-before: options.
 
 
+.. tool-xtensa-esp-elf-gdb-notes
+
+
+---
+
+.. tool-riscv32-esp-elf-gdb-notes
+
+
+---
+
 .. tool-xtensa-esp32-elf-notes
 
 
@@ -25,11 +35,6 @@
 ---
 
 .. tool-esp32ulp-elf-notes
-
-
----
-
-.. tool-esp32s2ulp-elf-notes
 
 
 ---
@@ -67,6 +72,11 @@ On Linux and macOS, it is recommended to install ninja using the OS package mana
 ---
 
 .. tool-dfu-util-notes
+
+
+---
+
+.. tool-esp-rom-elfs-notes
 
 
 ---

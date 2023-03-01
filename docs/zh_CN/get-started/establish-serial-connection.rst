@@ -13,8 +13,8 @@
 
 以下是乐鑫 {IDF_TARGET_NAME} 开发板驱动程序的链接：
 
-* CP210x: `CP210x USB 至 UART 桥 VCP 驱动程序 <https://www.silabs.com/products/development-tools/software/usb-to-uart-bridge-vcp-drivers>`_
-* FTDI: `FTDI 虚拟 COM 端口驱动程序 <https://www.ftdichip.com/Drivers/VCP.htm>`_
+* CP210x: `CP210x USB 至 UART 桥 VCP 驱动程序 <https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers>`_
+* FTDI: `FTDI 虚拟 COM 端口驱动程序 <https://ftdichip.com/drivers/vcp-drivers/>`_
 
 以上驱动仅供参考，请参考开发板用户指南，查看开发板具体使用的 USB 转串口芯片。一般情况下，当 {IDF_TARGET_NAME} 开发板与 PC 连接时，对应驱动程序应该已经被打包在操作系统中，并已经自动安装。
 
@@ -55,7 +55,7 @@ macOS::
 
 .. 注解::
 
-    对于 macOS 用户：若你没有看到串口，请检查你是否已按照《入门指南》安装了适用于你特定开发板的 USB/串口驱动程序。对于 macOS High Sierra (10.13) 的用户，你可能还需要手动允许驱动程序的加载，具体可打开 ``系统偏好设置`` -> ``安全和隐私`` -> ``通用``，检查是否有信息显示：“来自开发人员的系统软件...”，其中开发人员的名称为 Silicon Labs 或 FTDI。
+    对于 macOS 用户：若没有看到串口，请检查是否安装 USB/串口驱动程序。具体应使用的驱动程序，见章节 `连接 {IDF_TARGET_NAME} 和 PC`_。对于 macOS High Sierra (10.13) 的用户，你可能还需要手动允许驱动程序的加载，具体可打开 ``系统偏好设置`` -> ``安全和隐私`` -> ``通用``，检查是否有信息显示：“来自开发人员的系统软件...”，其中开发人员的名称为 Silicon Labs 或 FTDI。
 
 
 .. _linux-dialout-group:
@@ -79,12 +79,20 @@ macOS::
 
 现在，请使用串口终端程序，查看重置 {IDF_TARGET_NAME} 后终端上是否有输出，从而验证串口连接是否可用。
 
+.. only:: esp32c2
+
+    使用 40 MHz 的 XTAL 时，ESP32-C2 的控制台波特率默认为 115200；使用 26 MHz 的 XTAL 时，其波特率默认为 74880。
+
+.. only:: not esp32c2
+
+    {IDF_TARGET_NAME} 的控制台波特率默认为 115200。
+
 Windows 和 Linux 操作系统
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-在本示例中，我们将使用 `PuTTY SSH Client <https://www.putty.org/>`_， `PuTTY SSH Client <https://www.putty.org/>`_ 既可用于 Windows 也可用于 Linux。你也可以使用其他串口程序并设置如下的通信参数。
+在本示例中，我们将使用 `PuTTY SSH Client <https://www.putty.org/>`_， `PuTTY SSH Client <https://www.putty.org/>`_ 既可用于 Windows 也可用于 Linux。您也可以使用其他串口程序并设置如下的通信参数。
 
-运行终端，配置在上述步骤中确认的串口：波特率 = 115200，数据位 = 8，停止位 = 1，奇偶校验 = N。以下截屏分别展示了如何在 Windows 和 Linux 中配置串口和上述通信参数（如 115200-8-1-N）。注意，这里一定要选择在上述步骤中确认的串口进行配置。
+运行终端，配置在上述步骤中确认的串口：波特率 = 115200（如有需要，请更改为使用芯片的默认波特率），数据位 = 8，停止位 = 1，奇偶校验 = N。以下截屏分别展示了如何在 Windows 和 Linux 中配置串口和上述通信参数（如 115200-8-1-N）。注意，这里一定要选择在上述步骤中确认的串口进行配置。
 
 .. figure:: ../../_static/putty-settings-windows.png
     :align: center
@@ -120,7 +128,7 @@ macOS 提供了 **屏幕** 命令，因此您不用安装串口终端程序。
 
     /dev/cu.Bluetooth-Incoming-Port /dev/cu.SLAB_USBtoUART      /dev/cu.SLAB_USBtoUART7
 
-- 根据您连接到电脑上的开发板类型和数量，输出结果会有所不同。请选择开发板的设备名称，并运行以下命令::
+- 根据您连接到电脑上的开发板类型和数量，输出结果会有所不同。请选择开发板的设备名称，并运行以下命令（如有需要，请将“115200”更改为使用芯片的默认波特率）::
 
     screen /dev/cu.device_name 115200
 
@@ -136,7 +144,7 @@ macOS 提供了 **屏幕** 命令，因此您不用安装串口终端程序。
 输出示例
 ^^^^^^^^^^^
 
-以下是 {IDF_TARGET_NAME} 的一个日志示例。如果没看到任何输出，请尝试重置开发板。
+以下是一个日志示例。如果没看到任何输出，请尝试重置开发板。
 
 .. highlight:: none
 
@@ -169,4 +177,4 @@ macOS 提供了 **屏幕** 命令，因此您不用安装串口终端程序。
 
 如您在安装 {IDF_TARGET_NAME} 硬件开发的软件环境时，从 :ref:`get-started-connect` 跳转到了这里，请从 :ref:`get-started-configure` 继续阅读。
 
-.. _esptool 文档: https://github.com/espressif/esptool/wiki/ESP32-Boot-Mode-Selection#automatic-bootloader
+.. _esptool 文档: https://docs.espressif.com/projects/esptool/en/latest/advanced-topics/boot-mode-selection.html#automatic-bootloader

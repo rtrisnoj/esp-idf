@@ -98,7 +98,6 @@ The summary output provided by ``idf.py size`` does not give enough detail to fi
              libesp_system.a        245    206       0   3078        0       5990     3817   13336
                 libesp-tls.a          0      4       0      0        0       5637     3524    9165
     [... removed some lines here ...]
-          libtcpip_adapter.a          0     17       0      0        0        216        0     233
                 libesp_rom.a          0      0       0    112        0          0        0     112
                     libcxx.a          0      0       0      0        0         47        0      47
                        (exe)          0      0       0      3        0          3       12      18
@@ -291,7 +290,7 @@ The following configuration options will reduce the final binary size of almost 
     - Set :ref:`CONFIG_COMPILER_OPTIMIZATION` to "Optimize for size (-Os)". In some cases, "Optimize for performance (-O2)" will also reduce the binary size compared to the default. Note that if your code contains C or C++ Undefined Behaviour then increasing the compiler optimization level may expose bugs that otherwise don't happen.
     - Reduce the compiled-in log output by lowering the app :ref:`CONFIG_LOG_DEFAULT_LEVEL`. If the :ref:`CONFIG_LOG_MAXIMUM_LEVEL` is changed from the default then this setting controls the binary size instead. Reducing compiled-in logging reduces the number of strings in the binary, and also the code size of the calls to logging functions.
     - Set the :ref:`CONFIG_COMPILER_OPTIMIZATION_ASSERTION_LEVEL` to "Silent". This avoids compiling in a dedicated assertion string and source file name for each assert that may fail. It's still possible to find the failed assert in the code by looking at the memory address where the assertion failed.
-    - Besides the :ref:`CONFIG_COMPILER_OPTIMIZATION_ASSERTION_LEVEL`, you can disable or silent the assertion for HAL component separately by setting :ref:`CONFIG_HAL_DEFAULT_ASSERTION_LEVEL`.
+    - Besides the :ref:`CONFIG_COMPILER_OPTIMIZATION_ASSERTION_LEVEL`, you can disable or silent the assertion for HAL component separately by setting :ref:`CONFIG_HAL_DEFAULT_ASSERTION_LEVEL`. It is to notice that ESP-IDF lowers HAL assertion level in bootloader to be silent even if :ref:`CONFIG_HAL_DEFAULT_ASSERTION_LEVEL` is set to full-assertion level. This is to reduce the bootloader size.
     - Set :ref:`CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT`. This removes specific error messages for particular internal ESP-IDF error check macros. This may make it harder to debug some error conditions by reading the log output.
     :esp32: - If the binary needs to run on only certain revision(s) of ESP32, increasing :ref:`CONFIG_ESP32_REV_MIN` to match can result in a reduced binary size. This will make a large difference if setting ESP32 minimum revision 3, and PSRAM is enabled.
     :esp32c3: - If the binary needs to run on only certain revision(s) of ESP32-C3, increasing :ref:`CONFIG_ESP32C3_REV_MIN` to match can result in a reduced binary size. This is particularly true if setting ESP32-C3 minimum revision 3 and using Wi-Fi, as some functionality was moved to ROM code.
@@ -299,7 +298,7 @@ The following configuration options will reduce the final binary size of almost 
     - Disabling :ref:`CONFIG_ESP_ERR_TO_NAME_LOOKUP` will remove the lookup table to translate user-friendly names for error values (see :doc:`/api-guides/error-handling`) in error logs, etc. This saves some binary size, but error values will be printed as integers only.
     - Setting :ref:`CONFIG_ESP_SYSTEM_PANIC` to "Silent reboot" will save a small amount of binary size, however this is *only* recommended if no one will use UART output to debug the device.
     :CONFIG_IDF_TARGET_ARCH_RISCV: - Set :ref:`CONFIG_COMPILER_SAVE_RESTORE_LIBCALLS` to reduce binary size by replacing inlined prologues/epilogues with library calls.
-
+    - If the application binary uses only one of the security versions of the protocomm component, then the support for others can be disabled to save some code size. The support can be disabled through :ref:`CONFIG_ESP_PROTOCOMM_SUPPORT_SECURITY_VERSION_0`, :ref:`CONFIG_ESP_PROTOCOMM_SUPPORT_SECURITY_VERSION_1` or :ref:`CONFIG_ESP_PROTOCOMM_SUPPORT_SECURITY_VERSION_2` respectively.
 .. note::
 
    In addition to the many configuration items shown here, there are a number of configuration options where changing the option from the default will increase binary size. These are not noted here. Where the increase is significant, this is usually noted in the configuration item help text.
@@ -362,7 +361,17 @@ Enabling Nano formatting also reduces the stack usage of each function that call
 
 "Nano" formatting doesn't support 64-bit integers, or C99 formatting features. For a full list of restrictions, search for ``--enable-newlib-nano-formatted-io`` in the `Newlib README file`_.
 
+
+.. only:: esp32c2
+
+    .. note::
+
+        :ref:`CONFIG_NEWLIB_NANO_FORMAT` is enabled by default on {IDF_TARGET_NAME}
+
+
 .. _Newlib README file: https://sourceware.org/newlib/README
+
+.. _minimizing_binary_mbedtls:
 
 mbedTLS features
 @@@@@@@@@@@@@@@@
@@ -374,16 +383,15 @@ These include:
 - :ref:`CONFIG_MBEDTLS_HAVE_TIME`
 - :ref:`CONFIG_MBEDTLS_ECDSA_DETERMINISTIC`
 - :ref:`CONFIG_MBEDTLS_SHA512_C`
-- :ref:`CONFIG_MBEDTLS_SSL_PROTO_TLS1`
-- :ref:`CONFIG_MBEDTLS_SSL_PROTO_TLS1_1`
 - :ref:`CONFIG_MBEDTLS_CLIENT_SSL_SESSION_TICKETS`
 - :ref:`CONFIG_MBEDTLS_SERVER_SSL_SESSION_TICKETS`
+- :ref:`CONFIG_MBEDTLS_SSL_CONTEXT_SERIALIZATION`
 - :ref:`CONFIG_MBEDTLS_SSL_ALPN`
+- :ref:`CONFIG_MBEDTLS_SSL_RENEGOTIATION`
 - :ref:`CONFIG_MBEDTLS_CCM_C`
 - :ref:`CONFIG_MBEDTLS_GCM_C`
 - :ref:`CONFIG_MBEDTLS_ECP_C` (Alternatively: Leave this option enabled but disable some of the elliptic curves listed in the sub-menu.)
-- :ref:`CONFIG_MBEDTLS_SSL_RENEGOTIATION`
-- Change :ref:`CONFIG_MBEDTLS_TLS_MODE` if both Server & Client are not needed
+- Change :ref:`CONFIG_MBEDTLS_TLS_MODE` if both server & client functionalities are not needed
 - Consider disabling some ciphersuites listed in the "TLS Key Exchange Methods" sub-menu (i.e. :ref:`CONFIG_MBEDTLS_KEY_EXCHANGE_RSA`)
 
 The help text for each option has some more information.
@@ -401,11 +409,6 @@ The help text for each option has some more information.
 
    Not every combination of mbedTLS compile-time config is tested in ESP-IDF. If you find a combination that fails to compile or function as expected, please report the details on GitHub.
 
-FreeModBus
-@@@@@@@@@@
-
-If using Modbus, enable or disable :ref:`CONFIG_FMB_COMM_MODE_TCP_EN`, :ref:`CONFIG_FMB_COMM_MODE_RTU_EN`, :ref:`CONFIG_FMB_COMM_MODE_ASCII_EN` as applicable for the necessary functionality.
-
 VFS
 @@@
 
@@ -415,6 +418,25 @@ VFS
 * :ref:`CONFIG_VFS_SUPPORT_SELECT` — can be disabled if the application doesn't use ``select`` function with file descriptors. Currently, only the UART and eventfd VFS drivers implement ``select`` support. Note that when this option is disabled, ``select`` can still be used for socket file descriptors. Disabling this option reduces the code size by about 2.7 kB.
 * :ref:`CONFIG_VFS_SUPPORT_DIR` — can be disabled if the application doesn't use directory related functions, such as ``readdir`` (see the description of this option for the complete list). Applications which only open, read and write specific files and don't need to enumerate or create directories can disable this option, reducing the code size by 0.5 kB or more, depending on the filesystem drivers in use.
 * :ref:`CONFIG_VFS_SUPPORT_IO` — can be disabled if the application doesn't use filesystems or file-like peripheral drivers. This disables all VFS functionality, including the three options mentioned above. When this option is disabled, :doc:`console </api-reference/system/console>` can't be used. Note that the application can still use standard I/O functions with socket file descriptors when this option is disabled. Compared to the default configuration, disabling this option reduces code size by about 9.4 kB.
+
+.. only:: esp32c2
+
+    HAL
+    @@@
+
+    .. list::
+
+        :CONFIG_ESP_ROM_HAS_HAL_SYSTIMER: * Enabling :ref:`CONFIG_HAL_SYSTIMER_USE_ROM_IMPL` can reduce the IRAM usage and binary size by linking in the systimer HAL driver of ROM implementation.
+        :CONFIG_ESP_ROM_HAS_HAL_WDT: * Enabling :ref:`CONFIG_HAL_WDT_USE_ROM_IMPL` can reduce the IRAM usage and binary size by linking in the watchdog HAL driver of ROM implementation.
+
+.. only:: esp32c2
+
+    Heap
+    @@@@
+
+    .. list::
+
+        :CONFIG_ESP_ROM_HAS_HEAP_TLSF: * Enabling :ref:`CONFIG_HEAP_TLSF_USE_ROM_IMPL` can reduce the IRAM usage and binary size by linking in the TLSF library of ROM implementation.
 
 Bootloader Size
 ---------------

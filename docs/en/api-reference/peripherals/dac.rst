@@ -22,20 +22,23 @@ The DAC driver allows these channels to be set to arbitrary voltages.
     The DAC channels can also be driven with DMA-style written sample data by the digital controller, however the driver does not supported this yet.
 
 
-For other analog output options, see the :doc:`Sigma-delta Modulation module <sigmadelta>` and the :doc:`LED Control module <ledc>`. Both these modules produce high frequency PWM output, which can be hardware low-pass filtered in order to generate a lower frequency analog output.
+For other analog output options, see the :doc:`Sigma-delta Modulation module <sdm>` and the :doc:`LED Control module <ledc>`. Both these modules produce high frequency PDM/PWM output, which can be hardware low-pass filtered in order to generate a lower frequency analog output.
 
 
 Application Example
 -------------------
 
-Setting DAC channel 1 ({IDF_TARGET_DAC_CH_1}) voltage to approx 0.78 of VDD_A voltage (VDD * 200 / 255). For VDD_A 3.3V, this is 2.59V::
+Setting DAC channel 1 ({IDF_TARGET_DAC_CH_1}) voltage to approx 0.78 of VDD_A voltage (VDD * 200 / 255). For VDD_A 3.3V, this is 2.59V.
 
-  #include <driver/dac.h>
+.. code:: c
 
-  ...
+    #include <driver/dac.h>
 
-      dac_output_enable(DAC_CHANNEL_1);
-      dac_output_voltage(DAC_CHANNEL_1, 200);
+    ...
+
+    dac_output_enable(DAC_CHANNEL_1);
+    dac_output_voltage(DAC_CHANNEL_1, 200);
+
 
 API Reference
 -------------

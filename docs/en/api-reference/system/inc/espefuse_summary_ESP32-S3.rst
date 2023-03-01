@@ -33,14 +33,13 @@
     DIS_DOWNLOAD_DCACHE (BLOCK0)             Disables Dcache when SoC is in Download mode       = False R/W (0b0)
     DIS_FORCE_DOWNLOAD (BLOCK0)              Disables forcing chip into Download mode           = False R/W (0b0)
     DIS_CAN (BLOCK0)                         Disables the TWAI Controller hardware              = False R/W (0b0)
-    DIS_BOOT_REMAP (BLOCK0)                  Disables capability to Remap RAM to ROM address sp = False R/W (0b0)
-                                            ace                                               
+    DIS_APP_CPU (BLOCK0)                     Disables APP CPU                                   = False R/W (0b0)
     FLASH_TPUW (BLOCK0)                      Configures flash startup delay after SoC power-up, = 0 R/W (0x0)
                                             unit is (ms/2). When the value is 15, delay is 7.
                                             5 ms                                              
-    DIS_LEGACY_SPI_BOOT (BLOCK0)             Disables Legacy SPI boot mode                      = False R/W (0b0)
-    UART_PRINT_CHANNEL (BLOCK0)              Selects the default UART for printing boot msg     = UART0 R/W (0b0)
-    DIS_USB_DOWNLOAD_MODE (BLOCK0)           Disables use of USB in UART download boot mode     = False R/W (0b0)
+    DIS_DIRECT_BOOT (BLOCK0)                 Disables direct boot mode                          = False R/W (0b0)
+    DIS_USB_SERIAL_JTAG_ROM_PRINT (BLOCK0)       Selects the default UART for printing boot msg     = UART0 R/W (0b0)
+    DIS_USB_SERIAL_JTAG_DOWNLOAD_MODE (BLOCK0) Disables download through USB-Serial-JTAG        = False R/W (0b0)
     UART_PRINT_CONTROL (BLOCK0)              Sets the default UART boot message output mode     = Enabled R/W (0b00)
     FLASH_TYPE (BLOCK0)                      Selects SPI flash type                             = 4 data lines R/W (0b0)
     FORCE_SEND_RESUME (BLOCK0)               Forces ROM code to send an SPI flash resume comman = False R/W (0b0)

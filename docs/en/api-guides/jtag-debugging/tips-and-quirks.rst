@@ -2,6 +2,10 @@ Tips and Quirks
 ---------------
 :link_to_translation:`zh_CN:[中文]`
 
+.. See SOC_CPU_BREAKPOINTS_NUM, SOC_CPU_WATCHPOINTS_NUM in soc_caps.h
+{IDF_TARGET_CPU_BREAKPOINT_NUM:default="Not updated", esp32="2", esp32s2="2", esp32s3="2", esp32c3="8", esp32c2="2", "esp32c6"="4", "esp32h2"="8"}
+{IDF_TARGET_CPU_WATCHPOINT_NUM:default="Not updated", esp32="2", esp32s2="2", esp32s3="2", esp32c3="8", esp32c2="2", "esp32c6"="4", "esp32h2"="8"}
+
 This section provides collection of all tips and quirks referred to from various parts of this guide.
 
 .. _jtag-debugging-tip-breakpoints:
@@ -9,7 +13,7 @@ This section provides collection of all tips and quirks referred to from various
 Breakpoints and watchpoints available
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-{IDF_TARGET_NAME} debugger supports 2 hardware implemented breakpoints and 64 software ones. Hardware breakpoints are implemented by {IDF_TARGET_NAME} chip's logic and can be set anywhere in the code: either in flash or IRAM program's regions. Additionally there are 2 types of software breakpoints implemented by OpenOCD: flash (up to 32) and IRAM (up to 32) breakpoints. Currently GDB can not set software breakpoints in flash. So until this limitation is removed those breakpoints have to be emulated by OpenOCD as hardware ones (see :ref:`below <jtag-debugging-tip-where-breakpoints>` for details). {IDF_TARGET_NAME} also supports two watchpoints, so two variables can be watched for change or read by the GDB command ``watch myVariable``. Note that menuconfig option :ref:`CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK` uses the 2nd watchpoint and will not provide expected results, if you also try to use it within OpenOCD / GDB. See menuconfig's help for detailed description.
+{IDF_TARGET_NAME} debugger supports {IDF_TARGET_CPU_BREAKPOINT_NUM} hardware implemented breakpoints and 64 software ones. Hardware breakpoints are implemented by {IDF_TARGET_NAME} chip's logic and can be set anywhere in the code: either in flash or IRAM program's regions. Additionally there are 2 types of software breakpoints implemented by OpenOCD: flash (up to 32) and IRAM (up to 32) breakpoints. Currently GDB can not set software breakpoints in flash. So until this limitation is removed those breakpoints have to be emulated by OpenOCD as hardware ones (see :ref:`below <jtag-debugging-tip-where-breakpoints>` for details). {IDF_TARGET_NAME} also supports {IDF_TARGET_CPU_WATCHPOINT_NUM} watchpoints, so {IDF_TARGET_CPU_WATCHPOINT_NUM} variables can be watched for change or read by the GDB command ``watch myVariable``. Note that menuconfig option :ref:`CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK` uses the last watchpoint and will not provide expected results, if you also try to use it within OpenOCD / GDB. See menuconfig's help for detailed description.
 
 
 .. _jtag-debugging-tip-where-breakpoints:
@@ -58,7 +62,7 @@ Support options for OpenOCD at compile time
 
 ESP-IDF has some support options for OpenOCD debugging which can be set at compile time:
 
-* :ref:`CONFIG_{IDF_TARGET_CFG_PREFIX}_DEBUG_OCDAWARE` is enabled by default. If a panic or unhandled exception is thrown and a JTAG debugger is connected (ie  OpenOCD is running), ESP-IDF will break into the debugger.
+* :ref:`CONFIG_ESP_DEBUG_OCDAWARE` is enabled by default. If a panic or unhandled exception is thrown and a JTAG debugger is connected (ie  OpenOCD is running), ESP-IDF will break into the debugger.
 
 * :ref:`CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK` (disabled by default) sets watchpoint index 1 (the second of two) at the end of any task stack. This is the most accurate way to debug task stack overflows. Click the link for more details.
 
@@ -285,4 +289,4 @@ In case you encounter a problem with OpenOCD or GDB programs itself and do not f
 4.  Attach both ``openocd_log.txt`` and ``gdb_log.txt`` files to your issue report.
 
 
-.. _OpenOCD Manual: http://openocd.org/doc/html/index.html
+.. _OpenOCD Manual: https://openocd.org/doc/html/index.html

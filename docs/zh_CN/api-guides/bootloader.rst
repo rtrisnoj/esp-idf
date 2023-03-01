@@ -34,12 +34,12 @@ ESP-IDF 软件引导加载程序 (Bootloader) 主要执行以下任务：
    ESP-IDF V2.1 之前的版本
    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-	与新版本相比，ESP-IDF V2.1 之前的版本构建的引导加载程序对硬件的配置更少。使用这些早期 ESP-IDF 版本的引导加载程序并构建新应用程序时，请启用配置选项 :ref:`CONFIG_ESP32_COMPATIBLE_PRE_V2_1_BOOTLOADERS`。
+	与新版本相比，ESP-IDF V2.1 之前的版本构建的引导加载程序对硬件的配置更少。使用这些早期 ESP-IDF 版本的引导加载程序并构建新应用程序时，请启用配置选项 :ref:`CONFIG_APP_COMPATIBLE_PRE_V2_1_BOOTLOADERS`。
 
    ESP-IDF V3.1 之前的版本
    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-	ESP-IDF V3.1 之前的版本构建的引导加载程序不支持分区表二进制文件中的 MD5 校验。使用这些 ESP-IDF 版本的引导加载程序并构建新应用程序时，请启用配置选项 :ref:`CONFIG_ESP32_COMPATIBLE_PRE_V3_1_BOOTLOADERS`。
+	ESP-IDF V3.1 之前的版本构建的引导加载程序不支持分区表二进制文件中的 MD5 校验。使用这些 ESP-IDF 版本的引导加载程序并构建新应用程序时，请启用配置选项 :ref:`CONFIG_APP_COMPATIBLE_PRE_V3_1_BOOTLOADERS`。
 
 配置 SPI Flash
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -135,10 +135,6 @@ ROM 中的 :ref:`first-stage-bootloader` 从 flash 中读取 :ref:`second-stage-
 
 如果引导加载程序二进制文件过大，则引导加载程序会构建将失败并显示 "Bootloader binary size [..] is too large for partition table offset" 的错误。如果此二进制文件已经被烧录，那么 {IDF_TARGET_NAME} 将无法启动 - 日志中将记录无效分区表或无效引导加载程序校验和的错误。
 
-.. note::
-
-	对引导加载程序大小检查仅发生在 CMake 构建系统中，若使用的是旧版 GNU Make 构建系统，则不会检查大小，但如果引导加载程序太大，{IDF_TARGET_NAME} 将无法启动。
-
 可以使用如下方法解决此问题：
 
 - 将 :ref:`bootloader 编译器优化 <CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION>` 重新设置回默认值“Size”。
@@ -147,10 +143,12 @@ ROM 中的 :ref:`first-stage-bootloader` 从 flash 中读取 :ref:`second-stage-
 
 当启用 Secure Boot V2 时，由于引导加载程序最先加载到固定大小的缓冲区中进行验证，对二进制文件大小的绝对限制为 {IDF_TARGET_MAX_BOOTLOADER_SIZE}（不包括 4 KB 签名）。
 
-从深度睡眠中快速启动
-----------------------
+.. only:: SOC_RTC_FAST_MEM_SUPPORTED
 
-引导加载程序有 :ref:`CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP` 选项，可以减少从深度睡眠中唤醒的时间（有利于降低功耗）。当 :ref:`CONFIG_SECURE_BOOT` 选项禁用时，该选项可用。由于无需镜像校验，唤醒时间减少。在第一次启动时，引导加载程序将启动的应用程序的地址存储在 RTC FAST 存储器中。而在唤醒过程中，这个地址用于启动而无需任何检查，从而实现了快速加载。
+    从深度睡眠中快速启动
+    ----------------------
+
+    引导加载程序有 :ref:`CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP` 选项，可以减少从深度睡眠中唤醒的时间（有利于降低功耗）。当 :ref:`CONFIG_SECURE_BOOT` 选项禁用时，该选项可用。由于无需镜像校验，唤醒时间减少。在第一次启动时，引导加载程序将启动的应用程序的地址存储在 RTC FAST 存储器中。而在唤醒过程中，这个地址用于启动而无需任何检查，从而实现了快速加载。
 
 自定义引导加载程序
 ----------------------
@@ -163,5 +161,3 @@ ROM 中的 :ref:`first-stage-bootloader` 从 flash 中读取 :ref:`second-stage-
 在引导加载程序的代码中，用户不能使用其他组件提供的驱动和函数，如果确实需要，请将该功能的实现部分放在项目的 `bootloader_components` 目录中（注意，这会增加引导加载程序的大小）。
 
 如果引导加载程序过大，则可能与内存中的分区表重叠，分区表默认烧录在偏移量 0x8000 处。增加 :ref:`分区表偏移量 <CONFIG_PARTITION_TABLE_OFFSET>` ，将分区表放在 flash 中靠后的区域，这样可以增加引导程序的可用空间。
-
-.. note:: 上述任意一种自定义引导程序的方法都需要使用 CMake 构建系统（即不支持传统的 Make 构建系统）。

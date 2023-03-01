@@ -1,8 +1,6 @@
 Core Dump
 =========
 
-{IDF_TARGET_ROM_ELF:default="https://dl.espressif.com/dl/esp32_rom.elf", esp32="https://dl.espressif.com/dl/esp32_rom.elf", esp32s2="https://dl.espressif.com/dl/esp32s2_rom.elf", esp32s3="https://dl.espressif.com/dl/esp32s3_rom.elf", esp32c3="https://dl.espressif.com/dl/esp32c3_rev3_rom.elf"}
-
 Overview
 --------
 
@@ -37,7 +35,7 @@ There are a number of core dump related configuration options which user can cho
    The ELF format contains extended features and allow to save more information about broken tasks and crashed software but it requires more space in the flash memory.
    This format of core dump is recommended for new software designs and is flexible enough to extend saved information for future revisions.
 
-   The Binary format is kept for compatibility standpoint, it uses less space in the memory to keep data and provides better performance.
+   The Binary format is kept for compatibility reasons, it uses less space in the memory to keep data and provides better performance.
 
 **Core dump data integrity check (Components -> Core dump -> Core dump data integrity check)**
 
@@ -61,18 +59,16 @@ There are a number of core dump related configuration options which user can cho
    The value is in ms.
 
 **Handling of UART core dumps in IDF Monitor (Components -> Core dump -> Delay before print to UART)**
-   
+
    The value is base64 encoded.
 
    * Decode and show summary (info_corefile)
    * Don't decode
 
-.. only:: esp32c3
+**Reserved stack size (Components -> Core dump -> Reserved stack size)**
 
-   **Reserved stack size (Components -> Core dump -> Reserved stack size)**
-
-      Size of the memory to be reserved for core dump stack. If 0 core dump process will run on the stack of crashed task/ISR, otherwise special stack will be allocated.
-      To ensure that core dump itself will not overflow task/ISR stack set this to the value above 800.
+   Size of the memory to be reserved for core dump stack. If 0 core dump process will run on the stack of crashed task/ISR, otherwise special stack will be allocated.
+   To ensure that core dump itself will not overflow task/ISR stack set this to the value above 800.
 
 Save core dump to flash
 -----------------------
@@ -92,15 +88,33 @@ There are no special requirements for partition name. It can be chosen according
 sub-type should be 'coredump'. Also when choosing partition size note that core dump data structure introduces constant overhead of 20 bytes and per-task overhead of 12 bytes.
 This overhead does not include size of TCB and stack for every task. So partition size should be at least 20 + max tasks number x (12 + TCB size + max task stack size) bytes.
 
-The example of generic command to analyze core dump from flash is: ``espcoredump.py -p </path/to/serial/port> info_corefile </path/to/program/elf/file>``
-or ``espcoredump.py -p </path/to/serial/port> dbg_corefile </path/to/program/elf/file>``
+The example of generic command to analyze core dump from flash is:
+
+.. code-block:: bash
+
+    espcoredump.py -p </path/to/serial/port> info_corefile </path/to/program/elf/file>
+
+or
+
+.. code-block:: bash
+
+    espcoredump.py -p </path/to/serial/port> dbg_corefile </path/to/program/elf/file>
 
 Print core dump to UART
 -----------------------
 
 When this option is selected base64-encoded core dumps are printed on UART upon system panic. In this case user should save core dump text body to some file manually and
-then run the following command: ``espcoredump.py --chip <target_chip_type> info_corefile -t b64 -c </path/to/saved/base64/text> </path/to/program/elf/file>``
-or ``espcoredump.py --chip <target_chip_type> dbg_corefile -t b64 -c </path/to/saved/base64/text> </path/to/program/elf/file>``
+then run the following command:
+
+.. code-block:: bash
+
+    espcoredump.py --chip {IDF_TARGET_PATH_NAME} info_corefile -t b64 -c </path/to/saved/base64/text> </path/to/program/elf/file>
+
+or
+
+.. code-block:: bash
+
+    espcoredump.py --chip {IDF_TARGET_PATH_NAME} dbg_corefile -t b64 -c </path/to/saved/base64/text> </path/to/program/elf/file>
 
 Base64-encoded body of core dump will be between the following header and footer::
 
@@ -116,7 +130,7 @@ ROM Functions in Backtraces
 It is possible situation that at the moment of crash some tasks or/and crashed task itself have one or more ROM functions in their callstacks.
 Since ROM is not part of the program ELF it will be impossible for GDB to parse such callstacks, because it tries to analyse functions' prologues to accomplish that.
 In that case callstack printing will be broken with error message at the first ROM function.
-To overcome this issue you can use ROM ELF provided by Espressif ({IDF_TARGET_ROM_ELF}) and pass it to 'espcoredump.py'.
+To overcome this issue, you can use the `ROM ELF <https://github.com/espressif/esp-rom-elfs/releases>`_ provided by Espressif. You can find the {IDF_TARGET_PATH_NAME}'s corresponding ROM ELF file from the list of released archives. The ROM ELF file can then be passed to ``espcoredump.py``. More details about ROM ELFs can be found `here <https://github.com/espressif/esp-rom-elfs/blob/master/README.md>`_.
 
 Dumping variables on demand
 ---------------------------
@@ -127,9 +141,11 @@ Core dump supports retrieving variable data over GDB by attributing special nota
 Supported notations and RAM regions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-* ``COREDUMP_DRAM_ATTR`` places variable into DRAM area which will be included into dump.
-* ``COREDUMP_RTC_ATTR`` places variable into RTC area which will be included into dump.
-* ``COREDUMP_RTC_FAST_ATTR`` places variable into RTC_FAST area which will be included into dump.
+.. list::
+
+   * ``COREDUMP_DRAM_ATTR`` places variable into DRAM area which will be included into dump.
+   :SOC_RTC_FAST_MEM_SUPPORTED or SOC_RTC_SLOW_MEM_SUPPORTED: * ``COREDUMP_RTC_ATTR`` places variable into RTC area which will be included into dump.
+   :SOC_RTC_FAST_MEM_SUPPORTED: * ``COREDUMP_RTC_FAST_ATTR`` places variable into RTC_FAST area which will be included into dump.
 
 Example
 ^^^^^^^
@@ -172,7 +188,7 @@ Generic command syntax: ``espcoredump.py [options] command [args]``
 
 :Script Options:
 
-   --chip {auto,esp32,esp32s2,esp32s3,esp32c3}
+   --chip {auto,esp32,esp32s2,esp32s3,esp32c2,esp32c3}
                      Target chip type. Default value is "auto"
 
    --port PORT, -p PORT  Serial port device. Either "chip" or "port" need to be specified to determine the port when you have multi-target connected at the same time.
@@ -200,7 +216,7 @@ Generic command syntax: ``espcoredump.py [options] command [args]``
    --core-format {b64,elf,raw}, -t {b64,elf,raw}
                      File specified with "-c" is an ELF ("elf"), raw (raw) or base64-encoded (b64) binary
 
-   --off OFF, -o OFF     Offset of coredump partition in flash (type "make partition_table" to see).
+   --off OFF, -o OFF     Offset of coredump partition in flash (type "idf.py partition-table" to see).
 
    --save-core SAVE_CORE, -s SAVE_CORE
                      Save core to file. Otherwise temporary core file will be deleted. Does not work with "-c"
@@ -211,3 +227,11 @@ Generic command syntax: ``espcoredump.py [options] command [args]``
    --print-mem, -m       Print memory dump. Only valid when info_corefile.
 
    **<prog>**            Path to program ELF file.
+
+Related Documents
+^^^^^^^^^^^^^^^^^
+
+.. toctree::
+    :maxdepth: 1
+
+    core_dump_internals

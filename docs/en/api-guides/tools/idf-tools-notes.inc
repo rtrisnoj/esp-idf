@@ -2,6 +2,16 @@
 .. Comments "tool-NAME-notes" act as delimiters.
 
 
+.. tool-xtensa-esp-elf-gdb-notes
+
+
+---
+
+.. tool-riscv32-esp-elf-gdb-notes
+
+
+---
+
 .. tool-xtensa-esp32-elf-notes
 
 
@@ -23,11 +33,6 @@
 ---
 
 .. tool-esp32ulp-elf-notes
-
-
----
-
-.. tool-esp32s2ulp-elf-notes
 
 
 ---
@@ -65,6 +70,11 @@ On Linux and macOS, it is recommended to install ninja using the OS-specific pac
 ---
 
 .. tool-dfu-util-notes
+
+
+---
+
+.. tool-esp-rom-elfs-notes
 
 
 ---

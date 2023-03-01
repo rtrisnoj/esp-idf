@@ -25,7 +25,7 @@ Overview
 
     1. Provide overview where and how this API may be used.
     2. Where applicable include code snippets to illustrate functionality of particular functions.
-    3. To distinguish between sections, use the following `heading levels <http://www.sphinx-doc.org/en/stable/rest.html#sections>`_:
+    3. To distinguish between sections, use the following `heading levels <https://www.sphinx-doc.org/en/master/usage/restructuredtext/basics.html#sections>`_:
 
         * ``#`` with overline, for parts
         * ``*`` with overline, for chapters
@@ -81,7 +81,7 @@ API Reference
 
        For example see :idf_file:`docs/en/api-reference/network/esp_wifi.rst`
 
-    1. Optionally, rather that using ``*.inc`` files, you may want to describe API in you own way. See :idf_file:`docs/en/api-guides/ulp.rst` for example.
+    1. Optionally, rather that using ``*.inc`` files, you may want to describe API in you own way. See :idf_file:`docs/en/api-reference/storage/fatfs.rst` for example.
 
        Below is the list of common ``.. doxygen...::`` directives:
 

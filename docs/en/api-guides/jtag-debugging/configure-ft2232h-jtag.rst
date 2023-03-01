@@ -2,7 +2,6 @@
    :start-after: devkit-defs
    :end-before: ---
 
-
 Configure |devkit-name| JTAG Interface
 ======================================
 :link_to_translation:`zh_CN:[中文]`
@@ -35,7 +34,7 @@ Windows
 
 1.  Using standard USB A / micro USB B cable connect |devkit-name| to the computer. Switch the |devkit-name| on.
 
-2.  Wait until USB ports of |devkit-name| are recognized by Windows and drives are installed. If they do not install automatically, then download them from https://www.ftdichip.com/Drivers/D2XX.htm and install manually.
+2.  Wait until USB ports of |devkit-name| are recognized by Windows and drives are installed. If they do not install automatically, then download them from https://ftdichip.com/drivers/d2xx-drivers/ and install manually.
 
 3.  Download Zadig tool (Zadig_X.X.exe) from https://zadig.akeo.ie/ and run it.
 
@@ -104,7 +103,7 @@ On macOS, using FT2232 for JTAG and serial port at the same time needs some addi
 Manually unloading the driver
 .............................
 
-1. Install FTDI driver from https://www.ftdichip.com/Drivers/VCP.htm
+1. Install FTDI driver from https://ftdichip.com/drivers/vcp-drivers/
 
 2. Connect USB cable to the |devkit-name|.
 
@@ -125,7 +124,6 @@ Manually unloading the driver
    .. warning::
 
       Attempting to use serial over the wrong channel with the FTDI driver will cause a kernel panic. The ESP-WROVER-KIT uses channel A for JTAG and channel B for serial.
-
 
 4. Run OpenOCD:
 

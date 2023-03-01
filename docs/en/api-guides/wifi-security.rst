@@ -25,12 +25,12 @@ An attacker can use eavesdropping and packet injection to send spoofed (de)authe
 
 PMF provides protection against these attacks by encrypting unicast management frames and providing integrity checks for broadcast management frames. These include deauthentication, disassociation and robust management frames. It also provides Secure Association (SA) teardown mechanism to prevent spoofed association/authentication frames from disconnecting already connected clients.
 
-There are 3 types of PMF configuration modes on both Station and AP side -
+There are 3 types of PMF configuration modes on both station and AP side -
  - PMF Optional
  - PMF Required
  - PMF Disabled
 
-Depending on the PMF configuration on Station and AP side, the resulting connection will behave differently. Below table summarises all possible outcomes.
+Depending on PMF configurations on Station and AP side, the resulting connection will behave differently. The table below summarises all possible outcomes -
 
 +--------------+------------------------+---------------------------+
 | STA Setting  | AP Setting             |  Outcome                  |
@@ -51,24 +51,11 @@ Depending on the PMF configuration on Station and AP side, the resulting connect
 API & Usage
 +++++++++++
 
-{IDF_TARGET_NAME} supports PMF only in Station mode. Station defaults to PMF Optional mode and disabling PMF is not possible. For even higher security, PMF required mode can be enabled by setting the ``required`` flag in `pmf_cfg` while using the :cpp:func:`esp_wifi_set_config` API. This will result in Station only connecting to a PMF enabled AP and rejecting all other AP's. An example of this configuration is given below.
-
-   .. code-block:: c
-
-    wifi_config_t wifi_config = {
-        .sta = {
-             .ssid = EXAMPLE_WIFI_SSID,
-             .password = EXAMPLE_WIFI_PASSWORD,
-             .pmf_cfg = {
-                .required = true
-             }
-        }
-    };
+{IDF_TARGET_NAME} supports PMF in both Station and SoftAP mode. For both, the default mode is PMF Optional and disabling PMF is not possible. For even higher security, PMF required mode can be enabled by setting the ``required`` flag in `pmf_cfg` while using the :cpp:func:`esp_wifi_set_config` API. This will result in the device only connecting to a PMF enabled device and rejecting others.
 
 .. attention::
 
     ``capable`` flag in `pmf_cfg` is deprecated and set to true internally. This is to take the additional security benefit of PMF whenever possible.
-
 
 WPA3-Personal
 -------------

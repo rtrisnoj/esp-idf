@@ -43,6 +43,8 @@ Which Version Should I Start With?
 
 - If a required feature is not yet available in a stable release, but you do not want to use the master branch, it is possible to check out a pre-release version or a release branch. It is recommended to start from a stable version and then follow the instructions for :ref:`updating-pre-release` or :ref:`updating-release-branch`.
 
+- If you plan to use another project which is based on ESP-IDF, please check the documentation of that project to determine the version(s) of ESP-IDF it is compatible with.
+
 See :ref:`updating` if you already have a local copy of ESP-IDF and wish to update it.
 
 .. _versioning-scheme:
@@ -50,7 +52,7 @@ See :ref:`updating` if you already have a local copy of ESP-IDF and wish to upda
 Versioning Scheme
 -----------------
 
-ESP-IDF uses `Semantic Versioning <http://semver.org/>`_. This means that:
+ESP-IDF uses `Semantic Versioning <https://semver.org/>`_. This means that:
 
 - Major Releases, like ``v3.0``, add new functionality and may change functionality. This includes removing deprecated functionality.
 
@@ -86,19 +88,19 @@ Supported means that the ESP-IDF team will continue to apply bug fixes, security
 
 Support period is divided into "Service" and "Maintenance" period:
 
-.. list-table::   
-   :header-rows: 1    
-   :widths: 25 25 55    
-    
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 55
+
    * - Period
      - Duration
-     - Recommended for new projects?  
+     - Recommended for new projects?
    * - Service
      - 12 months
-     - Yes    
+     - Yes
    * - Maintenance
      - 18 months
-     - No  
+     - No
 
 During the Service period, bugfixes releases are more frequent. In some cases, support for new features may be added during the Service period (this is reserved for features which are needed to meet particular regulatory requirements or standards for new products, and which carry a very low risk of introducing regressions.)
 
@@ -225,7 +227,9 @@ To use the latest version on the ESP-IDF master branch, this is the process to f
 - Periodically, re-run ``git pull`` to pull the latest version of master. Note that you may need to change your project or report bugs after updating your master branch.
 - To switch from master to a release branch or stable version, run ``git checkout`` as shown in the other sections.
 
-.. important:: It is strongly recommended to regularly run ``git pull`` and then ``git submodule update --init --recursive`` so a local copy of master does not get too old. Arbitrary old master branch revisions are effectively unsupportable "snapshots" that may have undocumented bugs. For a semi-stable version, try :ref:`updating-release-branch` instead.
+.. important::
+
+    It is strongly recommended to regularly run ``git pull`` and then ``git submodule update --init --recursive`` so a local copy of master does not get too old. Arbitrary old master branch revisions are effectively unsupportable "snapshots" that may have undocumented bugs. For a semi-stable version, try :ref:`updating-release-branch` instead.
 
 .. _`updating-release-branch`:
 
@@ -246,9 +250,11 @@ For example, to follow the branch for ESP-IDF v3.1, including any bugfixes for f
 
 Each time you ``git pull`` this branch, ESP-IDF will be updated with fixes for this release.
 
-.. note:: There is no dedicated documentation for release branches. It is recommended to use the documentation for the closest version to the branch which is currently checked out.
+.. note::
 
-.. _`Releases page`: http://github.com/espressif/esp-idf/releases
+    There is no dedicated documentation for release branches. It is recommended to use the documentation for the closest version to the branch which is currently checked out.
+
+.. _`Releases page`: https://github.com/espressif/esp-idf/releases
 .. _`list of branches`: https://github.com/espressif/esp-idf/branches
 .. _`list of tags`: https://github.com/espressif/esp-idf/tags
 .. _`current stable version`: https://docs.espressif.com/projects/esp-idf/en/stable/

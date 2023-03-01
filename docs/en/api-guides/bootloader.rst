@@ -34,12 +34,12 @@ The bootloader does not support booting apps from older versions of ESP-IDF. Whe
     Before ESP-IDF V2.1
     ^^^^^^^^^^^^^^^^^^^
 
-    Bootloaders built from very old versions of ESP-IDF (before ESP-IDF V2.1) perform less hardware configuration than newer versions. When using a bootloader from these early ESP-IDF versions and building a new app, enable the config option :ref:`CONFIG_ESP32_COMPATIBLE_PRE_V2_1_BOOTLOADERS`.
+    Bootloaders built from very old versions of ESP-IDF (before ESP-IDF V2.1) perform less hardware configuration than newer versions. When using a bootloader from these early ESP-IDF versions and building a new app, enable the config option :ref:`CONFIG_APP_COMPATIBLE_PRE_V2_1_BOOTLOADERS`.
 
     Before ESP-IDF V3.1
     ^^^^^^^^^^^^^^^^^^^
 
-    Bootloaders built from versions of ESP-IDF before V3.1 do not support MD5 checksums in the partition table binary. When using a bootloader from these ESP-IDF versions and building a new app, enable the config option :ref:`CONFIG_ESP32_COMPATIBLE_PRE_V3_1_BOOTLOADERS`.
+    Bootloaders built from versions of ESP-IDF before V3.1 do not support MD5 checksums in the partition table binary. When using a bootloader from these ESP-IDF versions and building a new app, enable the config option :ref:`CONFIG_APP_COMPATIBLE_PRE_V3_1_BOOTLOADERS`.
 
 SPI Flash Configuration
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -135,10 +135,6 @@ When using the default :ref:`CONFIG_PARTITION_TABLE_OFFSET` value 0x8000, the si
 
 If the bootloader binary is too large, then the bootloader build will fail with an error "Bootloader binary size [..] is too large for partition table offset". If the bootloader binary is flashed anyhow then the {IDF_TARGET_NAME} will fail to boot - errors will be logged about either invalid partition table or invalid bootloader checksum.
 
-.. note::
-
-   The bootloader size check only happens in the CMake Build System, when using the legacy GNU Make Build System the size is not checked but the {IDF_TARGET_NAME} will fail to boot if bootloader is too large.
-
 Options to work around this are:
 
 - Set :ref:`bootloader compiler optimization <CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION>` back to "Size" if it has been changed from this default value.
@@ -147,10 +143,12 @@ Options to work around this are:
 
 When Secure Boot V2 is enabled, there is also an absolute binary size limit of {IDF_TARGET_MAX_BOOTLOADER_SIZE} (excluding the 4 KB signature), because the bootloader is first loaded into a fixed size buffer for verification.
 
-Fast boot from Deep Sleep
--------------------------
+.. only:: SOC_RTC_FAST_MEM_SUPPORTED
 
-The bootloader has the :ref:`CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP` option which allows the wake-up time from deep sleep to be reduced (useful for reducing power consumption). This option is available when :ref:`CONFIG_SECURE_BOOT` option is disabled. Reduction of time is achieved due to the lack of image verification. During the first boot, the bootloader stores the address of the application being launched in the RTC FAST memory. And during the awakening, this address is used for booting without any checks, thus fast loading is achieved.
+    Fast boot from Deep Sleep
+    -------------------------
+
+    The bootloader has the :ref:`CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP` option which allows the wake-up time from deep sleep to be reduced (useful for reducing power consumption). This option is available when :ref:`CONFIG_SECURE_BOOT` option is disabled. Reduction of time is achieved due to the lack of image verification. During the first boot, the bootloader stores the address of the application being launched in the RTC FAST memory. And during the awakening, this address is used for booting without any checks, thus fast loading is achieved.
 
 Custom bootloader
 -----------------
@@ -163,5 +161,3 @@ The current bootloader implementation allows a project to extend it or modify it
 In the bootloader space, you cannot use the drivers and functions from other components. If necessary, then the required functionality should be placed in the project's `bootloader_components` directory (note that this will increase its size).
 
 If the bootloader grows too large then it can collide with the partition table, which is flashed at offset 0x8000 by default. Increase the :ref:`partition table offset <CONFIG_PARTITION_TABLE_OFFSET>` value to place the partition table later in the flash. This increases the space available for the bootloader.
-
-.. note:: Customize the bootloader by using either method is only supported with CMake build system (i.e. not supported with legacy Make build system).

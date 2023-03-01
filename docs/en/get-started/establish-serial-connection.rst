@@ -13,8 +13,8 @@ Connect the {IDF_TARGET_NAME} board to the PC using the USB cable. If device dri
 
 Below is the list of USB to serial converter chips installed on most of the {IDF_TARGET_NAME} boards produced by Espressif together with links to the drivers:
 
-* CP210x: `CP210x USB to UART Bridge VCP Drivers <https://www.silabs.com/products/development-tools/software/usb-to-uart-bridge-vcp-drivers>`_
-* FTDI: `FTDI Virtual COM Port Drivers <https://www.ftdichip.com/Drivers/VCP.htm>`_
+* CP210x: `CP210x USB to UART Bridge VCP Drivers <https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers>`_
+* FTDI: `FTDI Virtual COM Port Drivers <https://ftdichip.com/drivers/vcp-drivers/>`_
 
 Please check the board user guide for specific USB to serial converter chip used. The drivers above are primarily for reference. Under normal circumstances, the drivers should be bundled with an operating system and automatically installed upon connecting the board to the PC.
 
@@ -55,7 +55,7 @@ macOS ::
 
 .. note::
 
-    macOS users: if you don't see the serial port then check you have the USB/serial drivers installed as shown in the Getting Started guide for your particular development board. For macOS High Sierra (10.13), you may also have to explicitly allow the drivers to load. Open System Preferences -> Security & Privacy -> General and check if there is a message shown here about "System Software from developer ..." where the developer name is Silicon Labs or FTDI.
+    macOS users: if you don't see the serial port then check you have the USB/serial drivers installed. See Section `Connect {IDF_TARGET_NAME} to PC`_ for links to drivers. For macOS High Sierra (10.13), you may also have to explicitly allow the drivers to load. Open System Preferences -> Security & Privacy -> General and check if there is a message shown here about "System Software from developer ..." where the developer name is Silicon Labs or FTDI.
 
 
 .. _linux-dialout-group:
@@ -77,14 +77,22 @@ Make sure you re-login to enable read and write permissions for the serial port.
 Verify serial connection
 ------------------------
 
-Now verify that the serial connection is operational. You can do this using a serial terminal program by checking if you get any output on the terminal after reseting {IDF_TARGET_NAME}. 
+Now verify that the serial connection is operational. You can do this using a serial terminal program by checking if you get any output on the terminal after resetting {IDF_TARGET_NAME}.
+
+.. only:: esp32c2
+
+    The default console baud rate on ESP32-C2 is 115200 when a 40 MHz XTAL is used, or 74880 when a 26 MHz XTAL is used.
+
+.. only:: not esp32c2
+
+    The default console baud rate on {IDF_TARGET_NAME} is 115200.
 
 Windows and Linux
 ^^^^^^^^^^^^^^^^^
 
-In this example we will use `PuTTY SSH Client <http://www.putty.org/>`_ that is available for both Windows and Linux. You can use other serial program and set communication parameters like below.
+In this example we will use `PuTTY SSH Client <https://www.putty.org/>`_ that is available for both Windows and Linux. You can use other serial programs and set communication parameters like below.
 
-Run terminal, set identified serial port, baud rate = 115200, data bits = 8, stop bits = 1, and parity = N. Below are example screen shots of setting the port and such transmission parameters (in short described as  115200-8-1-N) on Windows and Linux. Remember to select exactly the same serial port you have identified in steps above.
+Run terminal and set identified serial port. Baud rate = 115200 (if needed, change this to the default baud rate of the chip in use), data bits = 8, stop bits = 1, and parity = N. Below are example screenshots of setting the port and such transmission parameters (in short described as 115200-8-1-N) on Windows and Linux. Remember to select exactly the same serial port you have identified in steps above.
 
 .. figure:: ../../_static/putty-settings-windows.png
     :align: center
@@ -120,11 +128,11 @@ To spare you the trouble of installing a serial terminal program, macOS offers t
 
     /dev/cu.Bluetooth-Incoming-Port /dev/cu.SLAB_USBtoUART      /dev/cu.SLAB_USBtoUART7
 
-- The output will vary depending on the type and the number of boards connected to your PC. Then pick the device name of your board and run::
+- The output will vary depending on the type and the number of boards connected to your PC. Then pick the device name of your board and run (if needed, change "115200" to the default baud rate of the chip in use)::
 
     screen /dev/cu.device_name 115200
 
-  Replace ``device_name`` with the name found running ``ls /dev/cu.*``. 
+  Replace ``device_name`` with the name found running ``ls /dev/cu.*``.
 
 - What you are looking for is some log displayed by the **screen**. The log contents will depend on application loaded to {IDF_TARGET_NAME}, see `Example Output`_. To exit the **screen** session type Ctrl-A + \\ .
 
@@ -136,7 +144,7 @@ To spare you the trouble of installing a serial terminal program, macOS offers t
 Example Output
 ^^^^^^^^^^^^^^
 
-An example log by {IDF_TARGET_NAME} is shown below. Reset the board if you do not see anything.
+An example log is shown below. Reset the board if you do not see anything.
 
 .. highlight:: none
 
@@ -169,4 +177,4 @@ If you can see readable log output, it means serial connection is working and yo
 
 If you got here from :ref:`get-started-connect` when installing s/w for {IDF_TARGET_NAME} development, then you can continue with :ref:`get-started-configure`.
 
-.. _esptool documentation: https://github.com/espressif/esptool/wiki/ESP32-Boot-Mode-Selection#automatic-bootloader
+.. _esptool documentation: https://docs.espressif.com/projects/esptool/en/latest/advanced-topics/boot-mode-selection.html#automatic-bootloader
