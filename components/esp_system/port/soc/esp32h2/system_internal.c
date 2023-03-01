@@ -1,16 +1,8 @@
-// Copyright 2018 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2018-2021 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <string.h>
 #include "sdkconfig.h"
@@ -19,19 +11,18 @@
 #include "esp_attr.h"
 #include "esp_efuse.h"
 #include "esp_log.h"
-#include "riscv/riscv_interrupts.h"
-#include "riscv/interrupt.h"
+#include "riscv/rv_utils.h"
 #include "esp_rom_uart.h"
 #include "soc/gpio_reg.h"
 #include "soc/rtc_cntl_reg.h"
 #include "soc/timer_group_reg.h"
-#include "soc/cpu.h"
+#include "esp_cpu.h"
 #include "soc/rtc.h"
 #include "soc/rtc_periph.h"
 #include "soc/syscon_reg.h"
 #include "soc/system_reg.h"
 #include "hal/wdt_hal.h"
-#include "cache_err_int.h"
+#include "esp_private/cache_err_int.h"
 
 #include "esp32h2/rom/cache.h"
 #include "esp32h2/rom/rtc.h"
@@ -43,7 +34,7 @@
 void IRAM_ATTR esp_restart_noos(void)
 {
     // Disable interrupts
-    riscv_global_interrupts_disable();
+    rv_utils_intr_global_disable();
     // Enable RTC watchdog for 1 second
     wdt_hal_context_t rtc_wdt_ctx;
     wdt_hal_init(&rtc_wdt_ctx, WDT_RWDT, 0, false);
@@ -59,7 +50,7 @@ void IRAM_ATTR esp_restart_noos(void)
     // CPU must be reset before stalling, in case it was running a s32c1i
     // instruction. This would cause memory pool to be locked by arbiter
     // to the stalled CPU, preventing current CPU from accessing this pool.
-    const uint32_t core_id = cpu_hal_get_core_id();
+    const uint32_t core_id = esp_cpu_get_core_id();
 #if !CONFIG_FREERTOS_UNICORE
     const uint32_t other_core_id = (core_id == 0) ? 1 : 0;
     esp_cpu_reset(other_core_id);
@@ -95,7 +86,15 @@ void IRAM_ATTR esp_restart_noos(void)
     // Reset timer/spi/uart
     SET_PERI_REG_MASK(SYSTEM_PERIP_RST_EN0_REG,
                       SYSTEM_TIMERS_RST | SYSTEM_SPI01_RST | SYSTEM_UART_RST | SYSTEM_SYSTIMER_RST);
+    SET_PERI_REG_MASK(SYSTEM_MODEM_RST_EN_REG,
+                      SYSTEM_IEEE802154BB_RST | SYSTEM_IEEE802154MAC_RST |
+                      SYSTEM_BT_RST | SYSTEM_BTMAC_RST |
+                      SYSTEM_EMAC_RST | SYSTEM_MACPWR_RST |
+                      SYSTEM_RW_BTMAC_RST | SYSTEM_RW_BTLP_RST
+                      );
     REG_WRITE(SYSTEM_PERIP_RST_EN0_REG, 0);
+    REG_WRITE(SYSTEM_MODEM_RST_EN_REG, 0);
+
     // Reset dma
     SET_PERI_REG_MASK(SYSTEM_PERIP_RST_EN1_REG, SYSTEM_DMA_RST);
     REG_WRITE(SYSTEM_PERIP_RST_EN1_REG, 0);

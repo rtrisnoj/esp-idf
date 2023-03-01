@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2019-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -12,56 +12,60 @@
 #include "esp_err.h"
 
 #include "esp_log.h"
-#include "esp_system.h"
+#include "esp_chip_info.h"
 
 #include "esp_efuse.h"
-#include "cache_err_int.h"
+#include "esp_private/cache_err_int.h"
 #include "esp_clk_internal.h"
 
 #include "esp_rom_efuse.h"
 #include "esp_rom_uart.h"
 #include "esp_rom_sys.h"
+#include "esp_rom_caps.h"
 #include "sdkconfig.h"
 
 #if CONFIG_IDF_TARGET_ESP32
 #include "soc/dport_reg.h"
 #include "esp32/rtc.h"
 #include "esp32/rom/cache.h"
-#include "esp32/spiram.h"
+#include "esp32/rom/secure_boot.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/rtc.h"
 #include "esp32s2/rom/cache.h"
-#include "esp32s2/spiram.h"
-#include "esp32s2/dport_access.h"
+#include "esp32s2/rom/secure_boot.h"
+#include "esp32s2/memprot.h"
 #elif CONFIG_IDF_TARGET_ESP32S3
 #include "esp32s3/rtc.h"
 #include "esp32s3/rom/cache.h"
-#include "esp32s3/spiram.h"
-#include "esp32s3/dport_access.h"
+#include "esp32s3/rom/secure_boot.h"
+#include "esp_memprot.h"
 #include "soc/assist_debug_reg.h"
-#include "soc/cache_memory.h"
 #include "soc/system_reg.h"
 #include "esp32s3/rom/opi_flash.h"
 #elif CONFIG_IDF_TARGET_ESP32C3
 #include "esp32c3/rtc.h"
 #include "esp32c3/rom/cache.h"
-#include "soc/cache_memory.h"
+#include "esp32c3/rom/secure_boot.h"
+#include "esp_memprot.h"
 #elif CONFIG_IDF_TARGET_ESP32H2
 #include "esp32h2/rtc.h"
 #include "esp32h2/rom/cache.h"
-#include "soc/cache_memory.h"
+#include "esp32h2/rom/secure_boot.h"
+#include "esp_memprot.h"
+#elif CONFIG_IDF_TARGET_ESP32C2
+#include "esp32c2/rtc.h"
+#include "esp32c2/rom/cache.h"
+#include "esp32c2/rom/rtc.h"
+#include "esp32c2/rom/secure_boot.h"
+#include "esp32c2/memprot.h"
 #endif
 
-#if CONFIG_ESP_SYSTEM_MEMPROT_FEATURE
-#if CONFIG_IDF_TARGET_ESP32S2
-#include "esp32s2/memprot.h"
-#else
-#include "esp_memprot.h"
-#endif
+#if CONFIG_SPIRAM
+#include "esp_psram.h"
+#include "esp_private/esp_psram_extram.h"
 #endif
 
 #include "esp_private/spi_flash_os.h"
-#include "bootloader_common.h"
 #include "bootloader_flash_config.h"
 #include "bootloader_flash.h"
 #include "esp_private/crosscore_int.h"
@@ -71,44 +75,24 @@
 #include "hal/gpio_hal.h"
 #include "hal/wdt_hal.h"
 #include "soc/rtc.h"
-#include "soc/efuse_reg.h"
+#include "hal/efuse_ll.h"
 #include "soc/periph_defs.h"
-#include "soc/cpu.h"
-#include "soc/rtc.h"
-#include "soc/spinlock.h"
+#include "esp_cpu.h"
+#include "esp_private/esp_clk.h"
+#include "spi_flash_mmap.h"
 
 #if CONFIG_ESP32_TRAX || CONFIG_ESP32S2_TRAX || CONFIG_ESP32S3_TRAX
-#include "trax.h"
+#include "esp_private/trax.h"
 #endif
 
 #include "bootloader_mem.h"
 
 #if CONFIG_APP_BUILD_TYPE_ELF_RAM
-#if CONFIG_IDF_TARGET_ESP32
-#include "esp32/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32S2
-#include "esp32s2/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32S3
-#include "esp32s3/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32C3
-#include "esp32c3/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32H2
-#include "esp32h2/rom/spi_flash.h"
-#endif
+#include "esp_rom_spiflash.h"
 #endif // CONFIG_APP_BUILD_TYPE_ELF_RAM
 
-// Set efuse ROM_LOG_MODE on first boot
-//
-// For CONFIG_BOOT_ROM_LOG_ALWAYS_ON (default) or undefined (ESP32), leave
-// ROM_LOG_MODE undefined (no need to call this function during startup)
-#if CONFIG_BOOT_ROM_LOG_ALWAYS_OFF
-#define ROM_LOG_MODE ESP_EFUSE_ROM_LOG_ALWAYS_OFF
-#elif CONFIG_BOOT_ROM_LOG_ON_GPIO_LOW
-#define ROM_LOG_MODE ESP_EFUSE_ROM_LOG_ON_GPIO_LOW
-#elif CONFIG_BOOT_ROM_LOG_ON_GPIO_HIGH
-#define ROM_LOG_MODE ESP_EFUSE_ROM_LOG_ON_GPIO_HIGH
-#endif
-
+//This dependency will be removed in the future
+#include "soc/ext_mem_defs.h"
 
 #include "esp_private/startup_internal.h"
 #include "esp_private/system_internal.h"
@@ -139,15 +123,12 @@ static volatile bool s_cpu_inited[SOC_CPU_CORES_NUM] = { false };
 static volatile bool s_resume_cores;
 #endif
 
-// If CONFIG_SPIRAM_IGNORE_NOTFOUND is set and external RAM is not found or errors out on testing, this is set to false.
-bool g_spiram_ok = true;
-
 static void core_intr_matrix_clear(void)
 {
-    uint32_t core_id = cpu_hal_get_core_id();
+    uint32_t core_id = esp_cpu_get_core_id();
 
     for (int i = 0; i < ETS_MAX_INTR_SOURCE; i++) {
-        intr_matrix_set(core_id, i, ETS_INVALID_INUM);
+        esp_rom_route_intr_matrix(core_id, i, ETS_INVALID_INUM);
     }
 }
 
@@ -159,16 +140,16 @@ void startup_resume_other_cores(void)
 
 void IRAM_ATTR call_start_cpu1(void)
 {
-    cpu_hal_set_vecbase(&_vector_table);
+    esp_cpu_intr_set_ivt_addr(&_vector_table);
 
     ets_set_appcpu_boot_addr(0);
 
     bootloader_init_mem();
 
-#if CONFIG_ESP_CONSOLE_UART_NONE
+#if CONFIG_ESP_CONSOLE_NONE
     esp_rom_install_channel_putc(1, NULL);
     esp_rom_install_channel_putc(2, NULL);
-#else // CONFIG_ESP_CONSOLE_UART_NONE
+#else // CONFIG_ESP_CONSOLE_NONE
     esp_rom_install_uart_printf();
     esp_rom_uart_set_as_console(CONFIG_ESP_CONSOLE_UART_NUM);
 #endif
@@ -269,11 +250,11 @@ void IRAM_ATTR call_start_cpu0(void)
 #if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
     soc_reset_reason_t rst_reas[SOC_CPU_CORES_NUM];
 #else
-    soc_reset_reason_t rst_reas[1];
+    soc_reset_reason_t __attribute__((unused)) rst_reas[1];
 #endif
 
 #ifdef __riscv
-    if (cpu_hal_is_debugger_attached()) {
+    if (esp_cpu_dbgr_is_attached()) {
         /* Let debugger some time to detect that target started, halt it, enable ebreaks and resume.
            500ms should be enough. */
         for (uint32_t ms_num = 0; ms_num < 2; ms_num++) {
@@ -292,7 +273,7 @@ void IRAM_ATTR call_start_cpu0(void)
 #endif
 
     // Move exception vectors to IRAM
-    cpu_hal_set_vecbase(&_vector_table);
+    esp_cpu_intr_set_ivt_addr(&_vector_table);
 
     rst_reas[0] = esp_rom_get_reset_reason(0);
 #if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
@@ -321,10 +302,12 @@ void IRAM_ATTR call_start_cpu0(void)
     memset(&_iram_bss_start, 0, (&_iram_bss_end - &_iram_bss_start) * sizeof(_iram_bss_start));
 #endif
 
+#if SOC_RTC_FAST_MEM_SUPPORTED || SOC_RTC_SLOW_MEM_SUPPORTED
     /* Unless waking from deep sleep (implying RTC memory is intact), clear RTC bss */
     if (rst_reas[0] != RESET_REASON_CORE_DEEP_SLEEP) {
         memset(&_rtc_bss_start, 0, (&_rtc_bss_end - &_rtc_bss_start) * sizeof(_rtc_bss_start));
     }
+#endif
 
 #if CONFIG_IDF_TARGET_ESP32S2
     /* Configure the mode of instruction cache : cache size, cache associated ways, cache line size. */
@@ -354,23 +337,27 @@ void IRAM_ATTR call_start_cpu0(void)
     Cache_Resume_DCache(0);
 #endif // CONFIG_IDF_TARGET_ESP32S3
 
-#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32H2
+    if (esp_efuse_check_errors() != ESP_OK) {
+        esp_restart();
+    }
+
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32C2
     /* Configure the Cache MMU size for instruction and rodata in flash. */
     extern uint32_t Cache_Set_IDROM_MMU_Size(uint32_t irom_size, uint32_t drom_size);
     extern int _rodata_reserved_start;
-    uint32_t rodata_reserved_start_align = (uint32_t)&_rodata_reserved_start & ~(MMU_PAGE_SIZE - 1);
-    uint32_t cache_mmu_irom_size = ((rodata_reserved_start_align - SOC_DROM_LOW) / MMU_PAGE_SIZE) * sizeof(uint32_t);
+    uint32_t rodata_reserved_start_align = (uint32_t)&_rodata_reserved_start & ~(SPI_FLASH_MMU_PAGE_SIZE - 1);
+    uint32_t cache_mmu_irom_size = ((rodata_reserved_start_align - SOC_DROM_LOW) / SPI_FLASH_MMU_PAGE_SIZE) * sizeof(uint32_t);
 
 #if CONFIG_IDF_TARGET_ESP32S3
     extern int _rodata_reserved_end;
-    uint32_t cache_mmu_drom_size = (((uint32_t)&_rodata_reserved_end - rodata_reserved_start_align + MMU_PAGE_SIZE - 1) / MMU_PAGE_SIZE) * sizeof(uint32_t);
+    uint32_t cache_mmu_drom_size = (((uint32_t)&_rodata_reserved_end - rodata_reserved_start_align + SPI_FLASH_MMU_PAGE_SIZE - 1) / SPI_FLASH_MMU_PAGE_SIZE) * sizeof(uint32_t);
 #endif
 
     Cache_Set_IDROM_MMU_Size(cache_mmu_irom_size, CACHE_DROM_MMU_MAX_END - cache_mmu_irom_size);
-#endif // CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32H2
+#endif // CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32C2
 
 #if CONFIG_ESPTOOLPY_OCT_FLASH
-    bool efuse_opflash_en = REG_GET_FIELD(EFUSE_RD_REPEAT_DATA3_REG, EFUSE_FLASH_TYPE);
+    bool efuse_opflash_en = efuse_ll_get_flash_type();
     if (!efuse_opflash_en) {
         ESP_EARLY_LOGE(TAG, "Octal Flash option selected, but EFUSE not configured!");
         abort();
@@ -395,24 +382,18 @@ void IRAM_ATTR call_start_cpu0(void)
 
     bootloader_init_mem();
 #if CONFIG_SPIRAM_BOOT_INIT
-    if (esp_spiram_init() != ESP_OK) {
-#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+    if (esp_psram_init() != ESP_OK) {
 #if CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY
         ESP_EARLY_LOGE(TAG, "Failed to init external RAM, needed for external .bss segment");
         abort();
 #endif
-#endif
 
 #if CONFIG_SPIRAM_IGNORE_NOTFOUND
         ESP_EARLY_LOGI(TAG, "Failed to init external RAM; continuing without it.");
-        g_spiram_ok = false;
 #else
         ESP_EARLY_LOGE(TAG, "Failed to init external RAM!");
         abort();
 #endif
-    }
-    if (g_spiram_ok) {
-        esp_spiram_init_cache();
     }
 #endif
 
@@ -442,40 +423,25 @@ void IRAM_ATTR call_start_cpu0(void)
 #endif // SOC_CPU_CORES_NUM > 1
 
 #if CONFIG_SPIRAM_MEMTEST
-    if (g_spiram_ok) {
-        bool ext_ram_ok = esp_spiram_test();
+    if (esp_psram_is_initialized()) {
+        bool ext_ram_ok = esp_psram_extram_test();
         if (!ext_ram_ok) {
             ESP_EARLY_LOGE(TAG, "External RAM failed memory test!");
             abort();
         }
     }
-#endif
+#endif  //CONFIG_SPIRAM_MEMTEST
 
-#if CONFIG_SPIRAM_FETCH_INSTRUCTIONS
-    extern void instruction_flash_page_info_init(void);
-    instruction_flash_page_info_init();
-#endif
-#if CONFIG_SPIRAM_RODATA
-    extern void rodata_flash_page_info_init(void);
-    rodata_flash_page_info_init();
-#endif
-
-#if CONFIG_SPIRAM_FETCH_INSTRUCTIONS
-    extern void esp_spiram_enable_instruction_access(void);
-    esp_spiram_enable_instruction_access();
-#endif
-#if CONFIG_SPIRAM_RODATA
-    extern void esp_spiram_enable_rodata_access(void);
-    esp_spiram_enable_rodata_access();
-#endif
-
+//TODO: IDF-5023, replace with MMU driver
 #if CONFIG_IDF_TARGET_ESP32S3
     int s_instr_flash2spiram_off = 0;
     int s_rodata_flash2spiram_off = 0;
 #if CONFIG_SPIRAM_FETCH_INSTRUCTIONS
+    extern int instruction_flash2spiram_offset(void);
     s_instr_flash2spiram_off = instruction_flash2spiram_offset();
 #endif
 #if CONFIG_SPIRAM_RODATA
+    extern int rodata_flash2spiram_offset(void);
     s_rodata_flash2spiram_off = rodata_flash2spiram_offset();
 #endif
 
@@ -504,6 +470,14 @@ void IRAM_ATTR call_start_cpu0(void)
 #if CONFIG_ESP32S3_DATA_CACHE_16KB
     Cache_Invalidate_DCache_All();
     Cache_Occupy_Addr(SOC_DROM_LOW, 0x4000);
+#endif
+
+#if CONFIG_IDF_TARGET_ESP32C2
+// TODO : IDF-4194
+#if CONFIG_ESP32C2_INSTRUCTION_CACHE_WRAP
+    extern void esp_enable_cache_wrap(uint32_t icache_wrap_enable);
+    esp_enable_cache_wrap(1);
+#endif
 #endif
 
 #if CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY
@@ -536,9 +510,9 @@ void IRAM_ATTR call_start_cpu0(void)
 
 #ifndef CONFIG_IDF_ENV_FPGA // TODO: on FPGA it should be possible to configure this, not currently working with APB_CLK_FREQ changed
 #ifdef CONFIG_ESP_CONSOLE_UART
-    uint32_t clock_hz = rtc_clk_apb_freq_get();
-#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32H2
-    clock_hz = UART_CLK_FREQ_ROM; // From esp32-s3 on, UART clock source is selected to XTAL in ROM
+    uint32_t clock_hz = esp_clk_apb_freq();
+#if ESP_ROM_UART_CLK_IS_XTAL
+    clock_hz = esp_clk_xtal_freq(); // From esp32-s3 on, UART clock source is selected to XTAL in ROM
 #endif
     esp_rom_uart_tx_wait_idle(CONFIG_ESP_CONSOLE_UART_NUM);
     esp_rom_uart_set_clock_baudrate(CONFIG_ESP_CONSOLE_UART_NUM, clock_hz, CONFIG_ESP_CONSOLE_UART_BAUDRATE);
@@ -593,27 +567,44 @@ void IRAM_ATTR call_start_cpu0(void)
     __attribute__((unused)) esp_image_header_t fhdr = {0};
 #ifdef CONFIG_APP_BUILD_TYPE_ELF_RAM
     fhdr.spi_mode = ESP_IMAGE_SPI_MODE_DIO;
-    fhdr.spi_speed = ESP_IMAGE_SPI_SPEED_40M;
+    fhdr.spi_speed = ESP_IMAGE_SPI_SPEED_DIV_2;
     fhdr.spi_size = ESP_IMAGE_FLASH_SIZE_4MB;
 
     extern void esp_rom_spiflash_attach(uint32_t, bool);
+#if !CONFIG_IDF_TARGET_ESP32C2
     esp_rom_spiflash_attach(esp_rom_efuse_get_flash_gpio_info(), false);
+#else
+    // ESP32C2 cannot get flash_gpio_info from efuse
+    esp_rom_spiflash_attach(0, false);
+#endif // CONFIG_IDF_TARGET_ESP32C2
     bootloader_flash_unlock();
 #else
     // This assumes that DROM is the first segment in the application binary, i.e. that we can read
     // the binary header through cache by accessing SOC_DROM_LOW address.
+#pragma GCC diagnostic push
+#if     __GNUC__ >= 11
+#pragma GCC diagnostic ignored "-Wstringop-overread"
+#endif
+#pragma GCC diagnostic ignored "-Warray-bounds"
     memcpy(&fhdr, (void *) SOC_DROM_LOW, sizeof(fhdr));
+#pragma GCC diagnostic pop
+
 #endif // CONFIG_APP_BUILD_TYPE_ELF_RAM
 
-#if CONFIG_IDF_TARGET_ESP32 && !CONFIG_SPIRAM_BOOT_INIT
+#if CONFIG_IDF_TARGET_ESP32
+#if !CONFIG_SPIRAM_BOOT_INIT
     // If psram is uninitialized, we need to improve some flash configuration.
-    bootloader_init_flash_configure(&fhdr, bootloader_common_get_chip_ver_pkg());
-#endif // CONFIG_IDF_TARGET_ESP32 && !CONFIG_SPIRAM_BOOT_INIT
+    bootloader_flash_clock_config(&fhdr);
+    bootloader_flash_gpio_config(&fhdr);
+    bootloader_flash_dummy_config(&fhdr);
+    bootloader_flash_cs_timing_config();
+#endif //!CONFIG_SPIRAM_BOOT_INIT
+#endif //CONFIG_IDF_TARGET_ESP32
 
 #if CONFIG_SPI_FLASH_SIZE_OVERRIDE
     int app_flash_size = esp_image_get_flash_size(fhdr.spi_size);
     if (app_flash_size < 1 * 1024 * 1024) {
-        ESP_LOGE(TAG, "Invalid flash size in app image header.");
+        ESP_EARLY_LOGE(TAG, "Invalid flash size in app image header.");
         abort();
     }
     bootloader_flash_update_size(app_flash_size);
@@ -631,10 +622,6 @@ void IRAM_ATTR call_start_cpu0(void)
         }
         esp_rom_delay_us(100);
     }
-#endif
-
-#ifdef ROM_LOG_MODE
-    esp_efuse_set_rom_log_scheme(ROM_LOG_MODE);
 #endif
 
     SYS_STARTUP_FN();

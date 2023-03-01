@@ -1,16 +1,8 @@
-// Copyright 2018 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2018-2021 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <string.h>
 #include "esp_system.h"
@@ -26,13 +18,12 @@
 #include "soc/efuse_periph.h"
 #include "soc/rtc_periph.h"
 #include "soc/timer_periph.h"
-#include "soc/cpu.h"
+#include "esp_cpu.h"
 #include "soc/rtc.h"
 #include "hal/wdt_hal.h"
-#include "hal/cpu_hal.h"
 #include "freertos/xtensa_api.h"
 #include "soc/soc_memory_layout.h"
-#include "cache_err_int.h"
+#include "esp_private/cache_err_int.h"
 
 #include "esp32/rom/cache.h"
 #include "esp32/rom/rtc.h"
@@ -61,7 +52,7 @@ void IRAM_ATTR esp_restart_noos(void)
     // CPU must be reset before stalling, in case it was running a s32c1i
     // instruction. This would cause memory pool to be locked by arbiter
     // to the stalled CPU, preventing current CPU from accessing this pool.
-    const uint32_t core_id = cpu_hal_get_core_id();
+    const uint32_t core_id = esp_cpu_get_core_id();
     const uint32_t other_core_id = (core_id == 0) ? 1 : 0;
     esp_cpu_reset(other_core_id);
     esp_cpu_stall(other_core_id);
@@ -110,11 +101,17 @@ void IRAM_ATTR esp_restart_noos(void)
     WRITE_PERI_REG(GPIO_FUNC5_IN_SEL_CFG_REG, 0x30);
 
     // Reset wifi/bluetooth/ethernet/sdio (bb/mac)
-    DPORT_SET_PERI_REG_MASK(DPORT_CORE_RST_EN_REG,
-        DPORT_BB_RST | DPORT_FE_RST | DPORT_MAC_RST |
-        DPORT_BT_RST | DPORT_BTMAC_RST | DPORT_SDIO_RST |
-        DPORT_SDIO_HOST_RST | DPORT_EMAC_RST | DPORT_MACPWR_RST |
-        DPORT_RW_BTMAC_RST | DPORT_RW_BTLP_RST);
+    DPORT_SET_PERI_REG_MASK(DPORT_CORE_RST_EN_REG, DPORT_WIFIBB_RST    | \
+                                                   DPORT_FE_RST        | \
+                                                   DPORT_WIFIMAC_RST   | \
+                                                   DPORT_BTBB_RST      | \
+                                                   DPORT_BTMAC_RST     | \
+                                                   DPORT_SDIO_RST      | \
+                                                   DPORT_SDIO_HOST_RST | \
+                                                   DPORT_EMAC_RST      | \
+                                                   DPORT_MACPWR_RST    | \
+                                                   DPORT_RW_BTMAC_RST  | \
+                                                   DPORT_RW_BTLP_RST);
     DPORT_REG_WRITE(DPORT_CORE_RST_EN_REG, 0);
 
     // Reset timer/spi/uart

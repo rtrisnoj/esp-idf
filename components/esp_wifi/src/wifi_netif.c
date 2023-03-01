@@ -17,10 +17,10 @@
 /**
  * @brief WiFi netif driver structure
  */
-typedef struct wifi_netif_driver {
+struct wifi_netif_driver {
     esp_netif_driver_base_t base;
     wifi_interface_t wifi_if;
-}* wifi_netif_driver_t;
+};
 
 static const char* TAG = "wifi_netif";
 
@@ -48,7 +48,9 @@ static esp_err_t wifi_ap_receive(void *buffer, uint16_t len, void *eb)
 
 static void wifi_free(void *h, void* buffer)
 {
-    esp_wifi_internal_free_rx_buffer(buffer);
+    if (buffer) {
+        esp_wifi_internal_free_rx_buffer(buffer);
+    }
 }
 
 static esp_err_t wifi_transmit(void *h, void *buffer, size_t len)
@@ -60,7 +62,7 @@ static esp_err_t wifi_transmit(void *h, void *buffer, size_t len)
 static esp_err_t wifi_transmit_wrap(void *h, void *buffer, size_t len, void *netstack_buf)
 {
     wifi_netif_driver_t driver = h;
-#if (CONFIG_ESP32_SPIRAM_SUPPORT || CONFIG_ESP32S2_SPIRAM_SUPPORT || CONFIG_ESP32S3_SPIRAM_SUPPORT)
+#if CONFIG_SPIRAM
     return esp_wifi_internal_tx_by_ref(driver->wifi_if, buffer, len, netstack_buf);
 #else
     return esp_wifi_internal_tx(driver->wifi_if, buffer, len);
@@ -153,6 +155,7 @@ esp_err_t esp_wifi_register_if_rxcb(wifi_netif_driver_t ifx, esp_netif_receive_t
         return ESP_ERR_NOT_SUPPORTED;
     }
 
+    /* Interface must be set before registering Wi-Fi RX callback */
     s_wifi_netifs[wifi_interface] = ifx->base.netif;
     if ((ret = esp_wifi_internal_reg_rxcb(wifi_interface,  rxcb)) != ESP_OK) {
         ESP_LOGE(TAG, "esp_wifi_internal_reg_rxcb for if=%d failed with %d", wifi_interface, ret);

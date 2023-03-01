@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2019-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2019-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -15,6 +15,7 @@
 #include "soc/gpio_periph.h"
 #include "hal/uart_types.h"
 #include "hal/uart_ll.h"
+#include "driver/uart.h"
 #include "soc/rtc.h"            // for wakeup trigger defines
 #include "soc/rtc_periph.h"     // for read rtc registers directly (cause)
 #include "soc/soc.h"            // for direct register read macros
@@ -25,18 +26,8 @@
 #include "esp_rom_uart.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
-
-#if CONFIG_IDF_TARGET_ESP32
-#include "esp32/clk.h"
-#elif CONFIG_IDF_TARGET_ESP32S2
-#include "esp32s2/clk.h"
-#elif CONFIG_IDF_TARGET_ESP32S3
-#include "esp32s3/clk.h"
-#elif CONFIG_IDF_TARGET_ESP32C3
-#include "esp32c3/clk.h"
-#elif CONFIG_IDF_TARGET_ESP32H2
-#include "esp32h2/clk.h"
-#endif
+#include "esp_private/esp_clk.h"
+#include "esp_random.h"
 
 #define ESP_EXT0_WAKEUP_LEVEL_LOW 0
 #define ESP_EXT0_WAKEUP_LEVEL_HIGH 1
@@ -53,15 +44,28 @@ static void do_deep_sleep_from_app_cpu(void)
 {
     xTaskCreatePinnedToCore(&deep_sleep_task, "ds", 2048, NULL, 5, NULL, 1);
 
+#ifdef CONFIG_FREERTOS_SMP
+    //Note: Scheduler suspension behavior changed in FreeRTOS SMP
+    vTaskPreemptionDisable(NULL);
+#else
     // keep running some non-IRAM code
     vTaskSuspendAll();
+#endif // CONFIG_FREERTOS_SMP
 
     while (true) {
         ;
     }
 }
+
+TEST_CASE("enter deep sleep on APP CPU and wake up using timer", "[deepsleep][reset=DEEPSLEEP_RESET]")
+{
+    esp_sleep_enable_timer_wakeup(2000000);
+    do_deep_sleep_from_app_cpu();
+}
 #endif
 
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+//IDF-5131
 TEST_CASE("wake up from deep sleep using timer", "[deepsleep][reset=DEEPSLEEP_RESET]")
 {
     esp_sleep_enable_timer_wakeup(2000000);
@@ -75,6 +79,7 @@ TEST_CASE("light sleep followed by deep sleep", "[deepsleep][reset=DEEPSLEEP_RES
     esp_deep_sleep_start();
 }
 
+//IDF-5053
 TEST_CASE("wake up from light sleep using timer", "[deepsleep]")
 {
     esp_sleep_enable_timer_wakeup(2000000);
@@ -86,7 +91,10 @@ TEST_CASE("wake up from light sleep using timer", "[deepsleep]")
                (tv_stop.tv_usec - tv_start.tv_usec) * 1e-3f;
     TEST_ASSERT_INT32_WITHIN(500, 2000, (int) dt);
 }
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
 
+//NOTE: Explained in IDF-1445 | MR !14996
+#if !(CONFIG_SPIRAM) || (CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL >= 16384)
 static void test_light_sleep(void* arg)
 {
     vTaskDelay(2);
@@ -142,7 +150,7 @@ TEST_CASE("light sleep stress test with periodic esp_timer", "[deepsleep]")
     esp_timer_stop(timer);
     esp_timer_delete(timer);
 }
-
+#endif // !(CONFIG_SPIRAM) || (CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL >= 16384)
 
 #if defined(CONFIG_ESP_SYSTEM_RTC_EXT_XTAL)
 #define MAX_SLEEP_TIME_ERROR_US 200
@@ -194,18 +202,22 @@ TEST_CASE("light sleep duration is correct", "[deepsleep][ignore]")
 TEST_CASE("light sleep and frequency switching", "[deepsleep]")
 {
 #ifndef CONFIG_PM_ENABLE
-#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
-    uart_sclk_t clk_source = UART_SCLK_REF_TICK;
-#else
-    uart_sclk_t clk_source = UART_SCLK_XTAL;
+    uart_sclk_t clk_source = UART_SCLK_DEFAULT;
+#if SOC_UART_SUPPORT_REF_TICK
+    clk_source = UART_SCLK_REF_TICK;
+#elif SOC_UART_SUPPORT_XTAL_CLK
+    clk_source = UART_SCLK_XTAL;
 #endif
     uart_ll_set_sclk(UART_LL_GET_HW(CONFIG_ESP_CONSOLE_UART_NUM), clk_source);
-    uart_ll_set_baudrate(UART_LL_GET_HW(CONFIG_ESP_CONSOLE_UART_NUM), CONFIG_ESP_CONSOLE_UART_BAUDRATE);
+
+    uint32_t sclk_freq;
+    TEST_ESP_OK(uart_get_sclk_freq(clk_source, &sclk_freq));
+    uart_ll_set_baudrate(UART_LL_GET_HW(CONFIG_ESP_CONSOLE_UART_NUM), CONFIG_ESP_CONSOLE_UART_BAUDRATE, sclk_freq);
 #endif
 
     rtc_cpu_freq_config_t config_xtal, config_default;
     rtc_clk_cpu_freq_get_config(&config_default);
-    rtc_clk_cpu_freq_mhz_to_config((int) rtc_clk_xtal_freq_get(), &config_xtal);
+    rtc_clk_cpu_freq_mhz_to_config(esp_clk_xtal_freq() / MHZ, &config_xtal);
 
     esp_sleep_enable_timer_wakeup(1000);
     for (int i = 0; i < 1000; ++i) {
@@ -220,14 +232,8 @@ TEST_CASE("light sleep and frequency switching", "[deepsleep]")
     }
 }
 
-#ifndef CONFIG_FREERTOS_UNICORE
-TEST_CASE("enter deep sleep on APP CPU and wake up using timer", "[deepsleep][reset=DEEPSLEEP_RESET]")
-{
-    esp_sleep_enable_timer_wakeup(2000000);
-    do_deep_sleep_from_app_cpu();
-}
-#endif
-
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+//IDF-5131
 static void do_deep_sleep(void)
 {
     esp_sleep_enable_timer_wakeup(100000);
@@ -294,9 +300,12 @@ static void check_wake_stub(void)
 #endif
 }
 
+
 TEST_CASE_MULTIPLE_STAGES("can set sleep wake stub", "[deepsleep][reset=DEEPSLEEP_RESET]",
         prepare_wake_stub,
         check_wake_stub);
+
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
 
 
 #if CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP
@@ -365,6 +374,9 @@ TEST_CASE_MULTIPLE_STAGES("can set sleep wake stub from stack in RTC RAM", "[dee
 
 #if SOC_RTCIO_INPUT_OUTPUT_SUPPORTED
 
+
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+//IDF-5131
 TEST_CASE("wake up using ext0 (13 high)", "[deepsleep][ignore]")
 {
     ESP_ERROR_CHECK(rtc_gpio_init(GPIO_NUM_13));
@@ -418,6 +430,8 @@ TEST_CASE("wake up using ext1 when RTC_PERIPH is on (13 low)", "[deepsleep][igno
     ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup(BIT(GPIO_NUM_13), ESP_EXT1_WAKEUP_ALL_LOW));
     esp_deep_sleep_start();
 }
+
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
 
 __attribute__((unused)) static float get_time_ms(void)
 {
@@ -514,6 +528,8 @@ TEST_CASE("disable source trigger behavior", "[deepsleep]")
 
 #endif //SOC_RTCIO_INPUT_OUTPUT_SUPPORTED
 
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+//IDF-5131
 static RTC_DATA_ATTR struct timeval start;
 static void trigger_deepsleep(void)
 {
@@ -525,12 +541,12 @@ static void trigger_deepsleep(void)
     esp_set_time_from_rtc();
 
     // Delay for time error accumulation.
-    vTaskDelay(10000/portTICK_RATE_MS);
+    vTaskDelay(10000/portTICK_PERIOD_MS);
 
     // Save start time. Deep sleep.
     gettimeofday(&start, NULL);
     esp_sleep_enable_timer_wakeup(1000);
-    // In function esp_deep_sleep_start() uses function esp_sync_counters_rtc_and_frc()
+    // In function esp_deep_sleep_start() uses function esp_sync_timekeeping_timers()
     // to prevent a negative time after wake up.
     esp_deep_sleep_start();
 }
@@ -573,3 +589,4 @@ TEST_CASE("wake up using GPIO (2 or 4 low)", "[deepsleep][ignore]")
     esp_deep_sleep_start();
 }
 #endif // SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)

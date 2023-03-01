@@ -1,16 +1,8 @@
-// Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include <stdlib.h>
 #include <string.h>
 
@@ -19,21 +11,24 @@
 
 #include "esp_private/system_internal.h"
 #include "esp_private/usb_console.h"
-#include "esp_ota_ops.h"
 
-#include "soc/cpu.h"
+#include "esp_cpu.h"
 #include "soc/rtc.h"
-#include "soc/rtc_wdt.h"
 #include "hal/timer_hal.h"
-#include "hal/cpu_hal.h"
 #include "hal/wdt_types.h"
 #include "hal/wdt_hal.h"
+#include "esp_private/esp_int_wdt.h"
 
 #include "esp_private/panic_internal.h"
 #include "port/panic_funcs.h"
 #include "esp_rom_sys.h"
 
 #include "sdkconfig.h"
+
+#if __has_include("esp_app_desc.h")
+#define WITH_ELF_SHA256
+#include "esp_app_desc.h"
+#endif
 
 #if CONFIG_ESP_COREDUMP_ENABLE
 #include "esp_core_dump.h"
@@ -60,7 +55,7 @@
 #include "esp_gdbstub.h"
 #endif
 
-#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG
 #include "hal/usb_serial_jtag_ll.h"
 #endif
 
@@ -74,7 +69,7 @@ static wdt_hal_context_t rtc_wdt_ctx = {.inst = WDT_RWDT, .rwdt_dev = &RTCCNTL};
 #if CONFIG_ESP_CONSOLE_UART
 static uart_hal_context_t s_panic_uart = { .dev = CONFIG_ESP_CONSOLE_UART_NUM == 0 ? &UART0 :&UART1 };
 
-void panic_print_char(const char c)
+static void panic_print_char_uart(const char c)
 {
     uint32_t sz = 0;
     while (!uart_hal_get_txfifo_len(&s_panic_uart));
@@ -84,21 +79,21 @@ void panic_print_char(const char c)
 
 
 #if CONFIG_ESP_CONSOLE_USB_CDC
-void panic_print_char(const char c)
+static void panic_print_char_usb_cdc(const char c)
 {
     esp_usb_console_write_buf(&c, 1);
     /* result ignored */
 }
 #endif // CONFIG_ESP_CONSOLE_USB_CDC
 
-#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG
 //Timeout; if there's no host listening, the txfifo won't ever
 //be writable after the first packet.
 
 #define USBSERIAL_TIMEOUT_MAX_US 50000
 static int s_usbserial_timeout = 0;
 
-void panic_print_char(const char c)
+static void panic_print_char_usb_serial_jtag(const char c)
 {
     while (!usb_serial_jtag_ll_txfifo_writable() && s_usbserial_timeout < (USBSERIAL_TIMEOUT_MAX_US / 100)) {
         esp_rom_delay_us(100);
@@ -109,15 +104,21 @@ void panic_print_char(const char c)
         s_usbserial_timeout = 0;
     }
 }
-#endif //CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#endif //CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG
 
 
-#if CONFIG_ESP_CONSOLE_NONE
 void panic_print_char(const char c)
 {
-    /* no-op */
+#if CONFIG_ESP_CONSOLE_UART
+    panic_print_char_uart(c);
+#endif
+#if CONFIG_ESP_CONSOLE_USB_CDC
+    panic_print_char_usb_cdc(c);
+#endif
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG
+    panic_print_char_usb_serial_jtag(c);
+#endif
 }
-#endif // CONFIG_ESP_CONSOLE_NONE
 
 void panic_print_str(const char *str)
 {
@@ -171,7 +172,10 @@ void panic_print_dec(int d)
 void esp_panic_handler_reconfigure_wdts(void)
 {
     wdt_hal_context_t wdt0_context = {.inst = WDT_MWDT0, .mwdt_dev = &TIMERG0};
+#if SOC_TIMER_GROUPS >= 2
+	// IDF-3825
     wdt_hal_context_t wdt1_context = {.inst = WDT_MWDT1, .mwdt_dev = &TIMERG1};
+#endif
 
     //Todo: Refactor to use Interrupt or Task Watchdog API, and a system level WDT context
     //Reconfigure TWDT (Timer Group 0)
@@ -181,10 +185,12 @@ void esp_panic_handler_reconfigure_wdts(void)
     wdt_hal_enable(&wdt0_context);
     wdt_hal_write_protect_enable(&wdt0_context);
 
+#if SOC_TIMER_GROUPS >= 2
     //Disable IWDT (Timer Group 1)
     wdt_hal_write_protect_disable(&wdt1_context);
     wdt_hal_disable(&wdt1_context);
     wdt_hal_write_protect_enable(&wdt1_context);
+#endif
 }
 
 /*
@@ -193,7 +199,9 @@ void esp_panic_handler_reconfigure_wdts(void)
 static inline void disable_all_wdts(void)
 {
     wdt_hal_context_t wdt0_context = {.inst = WDT_MWDT0, .mwdt_dev = &TIMERG0};
+#if SOC_TIMER_GROUPS >= 2
     wdt_hal_context_t wdt1_context = {.inst = WDT_MWDT1, .mwdt_dev = &TIMERG1};
+#endif
 
     //Todo: Refactor to use Interrupt or Task Watchdog API, and a system level WDT context
     //Task WDT is the Main Watchdog Timer of Timer Group 0
@@ -201,10 +209,12 @@ static inline void disable_all_wdts(void)
     wdt_hal_disable(&wdt0_context);
     wdt_hal_write_protect_enable(&wdt0_context);
 
+#if SOC_TIMER_GROUPS >= 2
     //Interupt WDT is the Main Watchdog Timer of Timer Group 1
     wdt_hal_write_protect_disable(&wdt1_context);
     wdt_hal_disable(&wdt1_context);
     wdt_hal_write_protect_enable(&wdt1_context);
+#endif
 }
 
 static void print_abort_details(const void *f)
@@ -243,8 +253,8 @@ void esp_panic_handler(panic_info_t *info)
       *
       * ----------------------------------------------------------------------------------------
       * core - core where exception was triggered
-      * exception - what kind of exception occured
-      * description - a short description regarding the exception that occured
+      * exception - what kind of exception occurred
+      * description - a short description regarding the exception that occurred
       * details - more details about the exception
       * state - processor state like register contents, and backtrace
       * elf_info - details about the image currently running
@@ -273,7 +283,7 @@ void esp_panic_handler(panic_info_t *info)
     // If on-chip-debugger is attached, and system is configured to be aware of this,
     // then only print up to details. Users should be able to probe for the other information
     // in debug mode.
-    if (esp_cpu_in_ocd_debug_mode()) {
+    if (esp_cpu_dbgr_is_attached()) {
         panic_print_str("Setting breakpoint at 0x");
         panic_print_hex((uint32_t)info->addr);
         panic_print_str(" and returning...\r\n");
@@ -287,18 +297,16 @@ void esp_panic_handler(panic_info_t *info)
 #endif
 #endif
 
-        cpu_hal_set_breakpoint(0, info->addr); // use breakpoint 0
+        esp_cpu_set_breakpoint(0, info->addr); // use breakpoint 0
         return;
     }
 
     // start panic WDT to restart system if we hang in this handler
     if (!wdt_hal_is_enabled(&rtc_wdt_ctx)) {
         wdt_hal_init(&rtc_wdt_ctx, WDT_RWDT, 0, false);
-        uint32_t stage_timeout_ticks = (uint32_t)(70000ULL * rtc_clk_slow_freq_get_hz() / 1000ULL);
+        uint32_t stage_timeout_ticks = (uint32_t)(7000ULL * rtc_clk_slow_freq_get_hz() / 1000ULL);
         wdt_hal_write_protect_disable(&rtc_wdt_ctx);
         wdt_hal_config_stage(&rtc_wdt_ctx, WDT_STAGE0, stage_timeout_ticks, WDT_STAGE_ACTION_RESET_SYSTEM);
-        // For some reason WDT_STAGE_ACTION_RESET_SYSTEM doesn't reset the system and hangs it instead.
-        wdt_hal_config_stage(&rtc_wdt_ctx, WDT_STAGE1, 10, WDT_STAGE_ACTION_RESET_RTC);
         // 64KB of core dump data (stacks of about 30 tasks) will produce ~85KB base64 data.
         // @ 115200 UART speed it will take more than 6 sec to print them out.
         wdt_hal_enable(&rtc_wdt_ctx);
@@ -311,11 +319,21 @@ void esp_panic_handler(panic_info_t *info)
     PANIC_INFO_DUMP(info, state);
     panic_print_str("\r\n");
 
+    /* No matter if we come here from abort or an exception, this variable must be reset.
+     * Else, any exception/error occurring during the current panic handler would considered
+     * an abort. Do this after PANIC_INFO_DUMP(info, state) as it also checks this variable.
+     * For example, if coredump triggers a stack overflow and this variable is not reset,
+     * the second panic would be still be marked as the result of an abort, even the previous
+     * message reason would be kept. */
+    g_panic_abort = false;
+
+#ifdef WITH_ELF_SHA256
     panic_print_str("\r\nELF file SHA256: ");
     char sha256_buf[65];
-    esp_ota_get_app_elf_sha256(sha256_buf, sizeof(sha256_buf));
+    esp_app_get_elf_sha256(sha256_buf, sizeof(sha256_buf));
     panic_print_str(sha256_buf);
     panic_print_str("\r\n");
+#endif
 
     panic_print_str("\r\n");
 

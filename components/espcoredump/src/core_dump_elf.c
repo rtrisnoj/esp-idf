@@ -1,21 +1,11 @@
-// Copyright 2015-2019 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include <string.h>
 #include "esp_attr.h"
 #include "esp_partition.h"
-#include "esp_ota_ops.h"
-#include "esp_spi_flash.h"
 #include "esp_flash_encrypt.h"
 #include "sdkconfig.h"
 #include "core_dump_checksum.h"
@@ -23,6 +13,10 @@
 #include "esp_core_dump_port.h"
 #include "esp_core_dump_port_impl.h"
 #include "esp_core_dump_common.h"
+
+#ifdef CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF
+#include "esp_app_desc.h"
+#endif
 
 #define ELF_CLASS ELFCLASS32
 
@@ -504,7 +498,7 @@ static int elf_write_core_dump_info(core_dump_elf_t *self)
 
     ESP_COREDUMP_LOG_PROCESS("================ Processing coredump info ================");
     int data_len = (int)sizeof(self->elf_version_info.app_elf_sha256);
-    data_len = esp_ota_get_app_elf_sha256((char*)self->elf_version_info.app_elf_sha256, (size_t)data_len);
+    data_len = esp_app_get_elf_sha256((char*)self->elf_version_info.app_elf_sha256, (size_t)data_len);
     ESP_COREDUMP_LOG_PROCESS("Application SHA256='%s', length=%d.",
                                 self->elf_version_info.app_elf_sha256, data_len);
     self->elf_version_info.version = esp_core_dump_elf_version();
@@ -650,7 +644,7 @@ esp_err_t esp_core_dump_write_elf(core_dump_write_config_t *write_cfg)
 
 /* Below are the helper function to parse the core dump ELF stored in flash */
 
-static esp_err_t elf_core_dump_image_mmap(spi_flash_mmap_handle_t* core_data_handle, const void **map_addr)
+static esp_err_t elf_core_dump_image_mmap(esp_partition_mmap_handle_t* core_data_handle, const void **map_addr)
 {
     size_t out_size;
     assert (core_data_handle);
@@ -682,7 +676,7 @@ static esp_err_t elf_core_dump_image_mmap(spi_flash_mmap_handle_t* core_data_han
         return ret;
     }
     /* map the full core dump parition, including the checksum. */
-    return esp_partition_mmap(core_part, 0, out_size, SPI_FLASH_MMAP_DATA,
+    return esp_partition_mmap(core_part, 0, out_size, ESP_PARTITION_MMAP_DATA,
                               map_addr, core_data_handle);
 }
 
@@ -698,7 +692,7 @@ static void elf_parse_version_info(esp_core_dump_summary_t *summary, void *data)
 static void elf_parse_exc_task_name(esp_core_dump_summary_t *summary, void *tcb_data)
 {
     StaticTask_t *tcb = (StaticTask_t *) tcb_data;
-    /* An ugly way to get the task name. We could possibly use pcTaskGetTaskName here.
+    /* An ugly way to get the task name. We could possibly use pcTaskGetName here.
      * But that has assumption that TCB pointer can be used as TaskHandle. So let's
      * keep it this way. */
     memset(summary->exc_task, 0, sizeof(summary->exc_task));
@@ -713,7 +707,7 @@ esp_err_t esp_core_dump_get_summary(esp_core_dump_summary_t *summary)
     elf_note *note;
     const void *map_addr;
     size_t consumed_note_sz;
-    spi_flash_mmap_handle_t core_data_handle;
+    esp_partition_mmap_handle_t core_data_handle;
 
     if (!summary) {
         return ESP_ERR_INVALID_ARG;
@@ -771,7 +765,7 @@ esp_err_t esp_core_dump_get_summary(esp_core_dump_summary_t *summary)
             }
         }
     }
-    spi_flash_munmap(core_data_handle);
+    esp_partition_munmap(core_data_handle);
     return ESP_OK;
 }
 
