@@ -35,8 +35,10 @@ INCLUDE_DIRS := \
 	soc/include \
 	esp32/include \
 	bootloader_support/include \
+	bootloader_support/bootloader_flash/include \
 	app_update/include \
 	spi_flash/include \
 	hal/include \
 	wear_levelling/include \
+	esp_partition/include \
 	)

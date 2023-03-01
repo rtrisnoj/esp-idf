@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2018-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2018-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -10,6 +10,7 @@
 #include <string.h>
 #include "esp_err.h"
 #include "esp_attr.h"
+#include "esp_cpu.h"
 #include "sys/queue.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -59,7 +60,7 @@ static SLIST_HEAD(esp_thread_list_head, esp_pthread_entry) s_threads_list
 static pthread_key_t s_pthread_cfg_key;
 
 
-static int IRAM_ATTR pthread_mutex_lock_internal(esp_pthread_mutex_t *mux, TickType_t tmo);
+static int pthread_mutex_lock_internal(esp_pthread_mutex_t *mux, TickType_t tmo);
 
 static void esp_pthread_cfg_key_destructor(void *value)
 {
@@ -236,7 +237,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
         if (pthread_cfg->inherit_cfg) {
             if (pthread_cfg->thread_name == NULL) {
                 // Inherit task name from current task.
-                task_name = pcTaskGetTaskName(NULL);
+                task_name = pcTaskGetName(NULL);
             } else {
                 // Inheriting, but new task name.
                 task_name = pthread_cfg->thread_name;
@@ -493,18 +494,8 @@ int pthread_once(pthread_once_t *once_control, void (*init_routine)(void))
         return EINVAL;
     }
 
-    uint32_t res = 1;
-#if defined(CONFIG_SPIRAM)
-    if (esp_ptr_external_ram(once_control)) {
-        uxPortCompareSetExtram((uint32_t *) &once_control->init_executed, 0, &res);
-    } else {
-#endif
-        uxPortCompareSet((uint32_t *) &once_control->init_executed, 0, &res);
-#if defined(CONFIG_SPIRAM)
-    }
-#endif
     // Check if compare and set was successful
-    if (res == 0) {
+    if (esp_cpu_compare_and_set((volatile uint32_t *)&once_control->init_executed, 0, 1)) {
         ESP_LOGV(TAG, "%s: call init_routine %p", __FUNCTION__, once_control);
         init_routine();
     }

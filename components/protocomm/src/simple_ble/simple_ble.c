@@ -23,6 +23,7 @@ static simple_ble_cfg_t *g_ble_cfg_p;
 static uint16_t *g_gatt_table_map;
 
 static uint8_t adv_config_done;
+static esp_bd_addr_t s_cached_remote_bda = {0x0,};
 #define adv_config_flag      (1 << 0)
 #define scan_rsp_config_flag (1 << 1)
 
@@ -42,13 +43,13 @@ const uint8_t *simple_ble_get_uuid128(uint16_t handle)
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     switch (event) {
-    case ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT:
+    case ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT:
         adv_config_done &= (~adv_config_flag);
         if (adv_config_done == 0) {
             esp_ble_gap_start_advertising(&g_ble_cfg_p->adv_params);
         }
         break;
-    case ESP_GAP_BLE_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT:
+    case ESP_GAP_BLE_SCAN_RSP_DATA_SET_COMPLETE_EVT:
         adv_config_done &= (~scan_rsp_config_flag);
         if (adv_config_done == 0) {
             esp_ble_gap_start_advertising(&g_ble_cfg_p->adv_params);
@@ -94,15 +95,13 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
             ESP_LOGE(TAG, "set device name failed, error code = 0x%x", ret);
             return;
         }
-        ret = esp_ble_gap_config_adv_data_raw(g_ble_cfg_p->raw_adv_data_p,
-                                              g_ble_cfg_p->raw_adv_data_len);
+        ret = esp_ble_gap_config_adv_data(g_ble_cfg_p->adv_data_p);
         if (ret) {
             ESP_LOGE(TAG, "config raw adv data failed, error code = 0x%x ", ret);
             return;
         }
         adv_config_done |= adv_config_flag;
-        ret = esp_ble_gap_config_scan_rsp_data_raw(g_ble_cfg_p->raw_scan_rsp_data_p,
-                                                   g_ble_cfg_p->raw_scan_rsp_data_len);
+        ret = esp_ble_gap_config_adv_data(g_ble_cfg_p->scan_rsp_data_p);
         if (ret) {
             ESP_LOGE(TAG, "config raw scan rsp data failed, error code = 0x%x", ret);
             return;
@@ -135,6 +134,7 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
         g_ble_cfg_p->connect_fn(event, gatts_if, param);
         esp_ble_conn_update_params_t conn_params = {0};
         memcpy(conn_params.bda, param->connect.remote_bda, sizeof(esp_bd_addr_t));
+	memcpy(s_cached_remote_bda, param->connect.remote_bda, sizeof(esp_bd_addr_t));
         /* For the iOS system, please refer the official Apple documents about BLE connection parameters restrictions. */
         conn_params.latency = 0;
         conn_params.max_int = 0x20;    // max_int = 0x20*1.25ms = 40ms
@@ -145,6 +145,7 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
     case ESP_GATTS_DISCONNECT_EVT:
         ESP_LOGD(TAG, "ESP_GATTS_DISCONNECT_EVT, reason = %d", param->disconnect.reason);
         g_ble_cfg_p->disconnect_fn(event, gatts_if, param);
+        memset(s_cached_remote_bda, 0, sizeof(esp_bd_addr_t));
         esp_ble_gap_start_advertising(&g_ble_cfg_p->adv_params);
         break;
     case ESP_GATTS_CREAT_ATTR_TAB_EVT: {
@@ -322,3 +323,10 @@ esp_err_t simple_ble_stop(void)
     ESP_LOGD(TAG, "Free mem at end of simple_ble_stop %d", esp_get_free_heap_size());
     return ESP_OK;
 }
+
+#ifdef CONFIG_WIFI_PROV_DISCONNECT_AFTER_PROV
+esp_err_t simple_ble_disconnect(void)
+{
+    return esp_ble_gap_disconnect(s_cached_remote_bda);
+}
+#endif

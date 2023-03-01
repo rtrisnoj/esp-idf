@@ -2,14 +2,16 @@
 #include <sstream>
 #include <thread>
 #include <mutex>
+#include <memory>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "unity.h"
+#include "test_utils.h"
 
 #if __GTHREADS && __GTHREADS_CXX0X
 
 #include "esp_log.h"
-const static char *TAG = "pthread_test";
+const static __attribute__((unused)) char *TAG = "pthread_test";
 
 static std::mutex           mtx;
 static std::shared_ptr<int> global_sp_mtx; // protected by mux
@@ -134,5 +136,4 @@ TEST_CASE("pthread mix C/C++", "[pthread]")
         t1.join();
     }
 }
-
 #endif

@@ -1,5 +1,5 @@
 idf_component_register(SRCS "lldesc.c"
-                            "soc_include_legacy_warn.c"
+                            "dport_access_common.c"
                        INCLUDE_DIRS include
                        LDFRAGMENTS "linker.lf")
 

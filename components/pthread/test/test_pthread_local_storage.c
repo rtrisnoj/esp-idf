@@ -4,7 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "test_utils.h"
-#include "esp_system.h"
+#include "esp_random.h"
 
 TEST_CASE("pthread local storage basics", "[pthread]")
 {
@@ -172,6 +172,7 @@ typedef struct {
     unsigned count; // number of times the destructor has been called
     int last_idx; // index of last key where destructor was called
 } destr_test_state_t;
+
 
 static void s_test_repeat_destructor(void *vp_state);
 static void *s_test_repeat_destructor_thread(void *vp_state);

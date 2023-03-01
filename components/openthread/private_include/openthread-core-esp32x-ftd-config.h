@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -42,37 +42,27 @@
 #define OPENTHREAD_CONFIG_LOG_OUTPUT OPENTHREAD_CONFIG_LOG_OUTPUT_PLATFORM_DEFINED
 
 /**
+ * @def OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
+ *
+ * Configuration option to enable dynamic log level control.
+ *
+ */
+#define OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE CONFIG_OPENTHREAD_LOG_LEVEL_DYNAMIC
+
+/**
  * @def OPENTHREAD_CONFIG_LOG_LEVEL
  *
  * The log level (used at compile time). If `OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE` is set, this defines the most
  * verbose log level possible. See `OPENTHREAD_CONFIG_LOG_LEVEL_INIT` to set the initial log level.
  *
  */
+#if OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
 #define OPENTHREAD_CONFIG_LOG_LEVEL OT_LOG_LEVEL_DEBG
+#else
+#define OPENTHREAD_CONFIG_LOG_LEVEL CONFIG_OPENTHREAD_LOG_LEVEL
+#endif
 
-/**
- * @def OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
- *
- * Define as 1 to enable dynamic log level control.
- *
- */
-#define OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE 1
-
-#define OPENTHREAD_CONFIG_LOG_API 1
-#define OPENTHREAD_CONFIG_LOG_ARP 1
-#define OPENTHREAD_CONFIG_LOG_BBR 1
 #define OPENTHREAD_CONFIG_LOG_CLI 1
-#define OPENTHREAD_CONFIG_LOG_COAP 1
-#define OPENTHREAD_CONFIG_LOG_DUA 1
-#define OPENTHREAD_CONFIG_LOG_ICMP 1
-#define OPENTHREAD_CONFIG_LOG_IP6 1
-#define OPENTHREAD_CONFIG_LOG_MAC 1
-#define OPENTHREAD_CONFIG_LOG_MEM 1
-#define OPENTHREAD_CONFIG_LOG_MESHCOP 1
-#define OPENTHREAD_CONFIG_LOG_MLE 1
-#define OPENTHREAD_CONFIG_LOG_MLR 1
-#define OPENTHREAD_CONFIG_LOG_NETDATA 1
-#define OPENTHREAD_CONFIG_LOG_NETDIAG 1
 #define OPENTHREAD_CONFIG_LOG_PKT_DUMP 1
 #define OPENTHREAD_CONFIG_LOG_PLATFORM 1
 
@@ -90,7 +80,6 @@
  *
  */
 #define OPENTHREAD_CONFIG_COAP_API_ENABLE 1
-
 
 /**
  * @def OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE
@@ -165,6 +154,16 @@
 #endif
 
 /**
+ * @def OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE
+ *
+ * Define to 1 to enable Border Routing NAT64 support.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE
+#define OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE 1
+#endif
+
+/**
  * @def OPENTHREAD_CONFIG_ECDSA_ENABLE
  *
  * Define to 1 to enable ECDSA support.
@@ -192,6 +191,37 @@
  */
 #ifndef OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE
 #define OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
+ *
+ * Set to 1 to enable support for Thread Radio Encapsulation Link (TREL).
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
+#define OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE 0
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
+ *
+ * Define to 1 to enable Backbone Router support.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
+#define OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE 1
+#endif
+
+/**
+ * @def OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT
+ *
+ * Defines the max count of RCP failures allowed to be recovered.
+ * 0 means to disable RCP failure recovering.
+ *
+ */
+#ifndef OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT
+#define OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT 1
 #endif
 
 #endif // CONFIG_OPENTHREAD_BORDER_ROUTER
@@ -347,6 +377,26 @@
 #define OPENTHREAD_CONFIG_PING_SENDER_ENABLE 1
 
 /**
+ * @def OPENTHREAD_CONFIG_DUA_ENABLE
+ *
+ * Define as 1 to support Thread 1.2 Domain Unicast Address feature.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_DUA_ENABLE
+#define OPENTHREAD_CONFIG_DUA_ENABLE 0
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_MLR_ENABLE
+ *
+ * Define as 1 to support Thread 1.2 Multicast Listener Registration feature.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_MLR_ENABLE
+#define OPENTHREAD_CONFIG_MLR_ENABLE 1
+#endif
+
+/**
  * @def OPENTHREAD_CONFIG_DTLS_MAX_CONTENT_LEN
  *
  * The max length of the OpenThread dtls content buffer.
@@ -381,10 +431,6 @@
 #endif
 #endif
 
-#if CONFIG_OPENTHREAD_FTD
+#define OPENTHREAD_ENABLE_NCP_VENDOR_HOOK 1
+
 #define OPENTHREAD_FTD 1
-#elif CONFIG_OPENTHREAD_MTD
-#define OPENTHREAD_MTD 1
-#elif CONFIG_OPENTHREAD_RADIO
-#define OPENTHREAD_RADIO 1
-#endif

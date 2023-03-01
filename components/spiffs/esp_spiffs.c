@@ -1,23 +1,15 @@
-// Copyright 2015-2017 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include "esp_spiffs.h"
 #include "spiffs.h"
 #include "spiffs_nucleus.h"
 #include "esp_log.h"
 #include "esp_partition.h"
-#include "esp_spi_flash.h"
+#include "spi_flash_mmap.h"
 #include "esp_image_format.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -29,17 +21,7 @@
 #include <sys/lock.h>
 #include "esp_vfs.h"
 #include "esp_err.h"
-#if CONFIG_IDF_TARGET_ESP32
-#include "esp32/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32S2
-#include "esp32s2/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32S3
-#include "esp32s3/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32C3
-#include "esp32c3/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32H2
-#include "esp32h2/rom/spi_flash.h"
-#endif
+#include "esp_rom_spiflash.h"
 
 #include "spiffs_api.h"
 
@@ -66,6 +48,7 @@ typedef struct {
     char path[SPIFFS_OBJ_NAME_LEN]; /*!< Requested directory name */
 } vfs_spiffs_dir_t;
 
+static int spiffs_res_to_errno(s32_t fr);
 static int vfs_spiffs_open(void* ctx, const char * path, int flags, int mode);
 static ssize_t vfs_spiffs_write(void* ctx, int fd, const void * data, size_t size);
 static ssize_t vfs_spiffs_read(void* ctx, int fd, void * dst, size_t size);
@@ -86,6 +69,8 @@ static long vfs_spiffs_telldir(void* ctx, DIR* pdir);
 static void vfs_spiffs_seekdir(void* ctx, DIR* pdir, long offset);
 static int vfs_spiffs_mkdir(void* ctx, const char* name, mode_t mode);
 static int vfs_spiffs_rmdir(void* ctx, const char* name);
+static int vfs_spiffs_truncate(void* ctx, const char *path, off_t length);
+static int vfs_spiffs_ftruncate(void* ctx, int fd, off_t length);
 #ifdef CONFIG_SPIFFS_USE_MTIME
 static int vfs_spiffs_utime(void *ctx, const char *path, const struct utimbuf *times);
 #endif // CONFIG_SPIFFS_USE_MTIME
@@ -321,6 +306,22 @@ esp_err_t esp_spiffs_info(const char* partition_label, size_t *total_bytes, size
     return ESP_OK;
 }
 
+esp_err_t esp_spiffs_check(const char* partition_label)
+{
+    int index;
+    if (esp_spiffs_by_label(partition_label, &index) != ESP_OK) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (SPIFFS_check(_efs[index]->fs) != SPIFFS_OK) {
+        int spiffs_res = SPIFFS_errno(_efs[index]->fs);
+        ESP_LOGE(TAG, "SPIFFS_check failed (%d)", spiffs_res);
+        errno = spiffs_res_to_errno(SPIFFS_errno(_efs[index]->fs));
+        SPIFFS_clearerr(_efs[index]->fs);
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+
 esp_err_t esp_spiffs_format(const char* partition_label)
 {
     bool partition_was_mounted = false;
@@ -377,6 +378,24 @@ esp_err_t esp_spiffs_format(const char* partition_label)
     return ESP_OK;
 }
 
+esp_err_t esp_spiffs_gc(const char* partition_label, size_t size_to_gc)
+{
+    int index;
+    if (esp_spiffs_by_label(partition_label, &index) != ESP_OK) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    int res = SPIFFS_gc(_efs[index]->fs, size_to_gc);
+    if (res != SPIFFS_OK) {
+        ESP_LOGE(TAG, "SPIFFS_gc failed, %d", res);
+        SPIFFS_clearerr(_efs[index]->fs);
+        if (res == SPIFFS_ERR_FULL) {
+            return ESP_ERR_NOT_FINISHED;
+        }
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+
 esp_err_t esp_vfs_spiffs_register(const esp_vfs_spiffs_conf_t * conf)
 {
     assert(conf->base_path);
@@ -401,6 +420,8 @@ esp_err_t esp_vfs_spiffs_register(const esp_vfs_spiffs_conf_t * conf)
         .telldir_p = &vfs_spiffs_telldir,
         .mkdir_p = &vfs_spiffs_mkdir,
         .rmdir_p = &vfs_spiffs_rmdir,
+        .truncate_p = &vfs_spiffs_truncate,
+        .ftruncate_p = &vfs_spiffs_ftruncate,
 #ifdef CONFIG_SPIFFS_USE_MTIME
         .utime_p = &vfs_spiffs_utime,
 #else
@@ -716,7 +737,8 @@ static int vfs_spiffs_readdir_r(void* ctx, DIR* pdir, struct dirent* entry,
     }
     entry->d_ino = 0;
     entry->d_type = out.type;
-    snprintf(entry->d_name, SPIFFS_OBJ_NAME_LEN, "%s", item_name);
+    strncpy(entry->d_name, item_name, SPIFFS_OBJ_NAME_LEN);
+    entry->d_name[SPIFFS_OBJ_NAME_LEN - 1] = '\0';
     dir->offset++;
     *out_dirent = entry;
     return 0;
@@ -771,6 +793,44 @@ static int vfs_spiffs_rmdir(void* ctx, const char* name)
 {
     errno = ENOTSUP;
     return -1;
+}
+
+static int vfs_spiffs_truncate(void* ctx, const char *path, off_t length)
+{
+    assert(path);
+    esp_spiffs_t * efs = (esp_spiffs_t *)ctx;
+    int fd = SPIFFS_open(efs->fs, path, SPIFFS_WRONLY, 0);
+    if (fd < 0) {
+        goto err;
+    }
+
+    int res = SPIFFS_ftruncate(efs->fs, fd, length);
+    if (res < 0) {
+        (void)SPIFFS_close(efs->fs, fd);
+        goto err;
+    }
+
+    res = SPIFFS_close(efs->fs, fd);
+    if (res < 0) {
+       goto err;
+    }
+    return res;
+err:
+    errno = spiffs_res_to_errno(SPIFFS_errno(efs->fs));
+    SPIFFS_clearerr(efs->fs);
+    return -1;
+}
+
+static int vfs_spiffs_ftruncate(void* ctx, int fd, off_t length)
+{
+    esp_spiffs_t * efs = (esp_spiffs_t *)ctx;
+    int res = SPIFFS_ftruncate(efs->fs, fd, length);
+    if (res < 0) {
+        errno = spiffs_res_to_errno(SPIFFS_errno(efs->fs));
+        SPIFFS_clearerr(efs->fs);
+        return -1;
+    }
+    return res;
 }
 
 static int vfs_spiffs_link(void* ctx, const char* n1, const char* n2)

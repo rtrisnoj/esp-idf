@@ -1,16 +1,8 @@
-// Copyright 2020 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2020-2021 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #pragma once
 
@@ -41,11 +33,15 @@ typedef enum {
     PERIPH_RSA_MODULE,
     PERIPH_AES_MODULE,
     PERIPH_SHA_MODULE,
+    PERIPH_ECC_MODULE,
     PERIPH_HMAC_MODULE,
     PERIPH_DS_MODULE,
     PERIPH_GDMA_MODULE,
     PERIPH_SYSTIMER_MODULE,
     PERIPH_SARADC_MODULE,
+    PERIPH_TEMPSENSOR_MODULE,
+    PERIPH_ETM_MODULE,
+    PERIPH_MODEM_RPA_MODULE,
     PERIPH_MODULE_MAX
 } periph_module_t;
 
@@ -75,8 +71,8 @@ typedef enum {
     ETS_UART1_INTR_SOURCE,                      /**< interrupt of UART1, level*/
     ETS_LEDC_INTR_SOURCE,                       /**< interrupt of LED PWM, level*/
     ETS_EFUSE_INTR_SOURCE,                      /**< interrupt of efuse, level, not likely to use*/
-    ETS_TWAI_INTR_SOURCE,                        /**< interrupt of can, level*/
-    ETS_USB_INTR_SOURCE,                        /**< interrupt of USB, level*/
+    ETS_TWAI_INTR_SOURCE,                       /**< interrupt of twai, level*/
+    ETS_USB_SERIAL_JTAG_INTR_SOURCE,            /**< interrupt of USJ, level*/
     ETS_RTC_CORE_INTR_SOURCE,                   /**< interrupt of rtc core, level, include rtc watchdog*/
     ETS_RMT_INTR_SOURCE,                        /**< interrupt of remote controller, level*/
     ETS_I2C_EXT0_INTR_SOURCE,                   /**< interrupt of I2C controller1, level*/
