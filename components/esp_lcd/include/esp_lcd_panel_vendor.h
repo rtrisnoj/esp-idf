@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -18,12 +18,15 @@ extern "C" {
  */
 typedef struct {
     int reset_gpio_num; /*!< GPIO used to reset the LCD panel, set to -1 if it's not used */
-    esp_lcd_color_space_t color_space; /*!< Set the color space used by the LCD panel */
+    union {
+        lcd_color_rgb_endian_t color_space; /*!< @deprecated Set RGB color space, please use rgb_endian instead */
+        lcd_color_rgb_endian_t rgb_endian;  /*!< Set RGB data endian: RGB or BGR */
+    };
     unsigned int bits_per_pixel;       /*!< Color depth, in bpp */
     struct {
         unsigned int reset_active_high: 1; /*!< Setting this if the panel reset is high level active */
-    } flags;
-    void *vendor_config; /* vendor specific configuration, optional, left as NULL if not used */
+    } flags;                               /*!< LCD panel config flags */
+    void *vendor_config; /*!< vendor specific configuration, optional, left as NULL if not used */
 } esp_lcd_panel_dev_config_t;
 
 /**
