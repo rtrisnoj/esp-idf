@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2020-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2020-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -9,7 +9,6 @@
 #include "soc/soc.h"
 #include "soc/rtc.h"
 #include "soc/rtc_cntl_reg.h"
-#include "soc/io_mux_reg.h"
 #include "soc/efuse_periph.h"
 #include "soc/gpio_reg.h"
 #include "soc/spi_mem_reg.h"
@@ -17,7 +16,6 @@
 #include "soc/system_reg.h"
 #include "soc/syscon_reg.h"
 #include "regi2c_ctrl.h"
-#include "soc_log.h"
 #include "esp_efuse.h"
 #include "esp_efuse_table.h"
 #include "i2c_pmu.h"
@@ -80,8 +78,13 @@ void rtc_init(rtc_config_t cfg)
             SET_PERI_REG_MASK(RTC_CNTL_OPTIONS0_REG, RTC_CNTL_BB_I2C_FORCE_PU);
         }
 
+#if CONFIG_IDF_TARGET_ESP32H2_BETA_VERSION_2
+        CLEAR_PERI_REG_MASK(RTC_CNTL_REGULATOR_REG, RTC_CNTL_REGULATOR_FORCE_PU);
+        CLEAR_PERI_REG_MASK(RTC_CNTL_REGULATOR_REG, RTC_CNTL_DBOOST_FORCE_PU);
+#elif CONFIG_IDF_TARGET_ESP32H2_BETA_VERSION_1
         CLEAR_PERI_REG_MASK(RTC_CNTL_REG, RTC_CNTL_REGULATOR_FORCE_PU);
         CLEAR_PERI_REG_MASK(RTC_CNTL_REG, RTC_CNTL_DBOOST_FORCE_PU);
+#endif
 
         // clear i2c_reset_protect pd force, need tested in low temperature.
         CLEAR_PERI_REG_MASK(RTC_CNTL_ANA_CONF_REG,RTC_CNTL_I2C_RESET_POR_FORCE_PD);
@@ -202,42 +205,4 @@ void rtc_vddsdio_set_config(rtc_vddsdio_config_t config)
     val |= (config.tieh << RTC_CNTL_SDIO_TIEH_S);
     val |= RTC_CNTL_SDIO_PD_EN;
     REG_WRITE(RTC_CNTL_SDIO_CONF_REG, val);
-}
-
-void dig_gpio_setpd(uint32_t gpio_no, bool pd)
-{
-    SET_PERI_REG_BITS(PERIPHS_IO_MUX_XTAL_32K_P_U + 4 * gpio_no, 0x1, pd, FUN_PD_S);
-}
-
-void dig_gpio_setpu(uint32_t gpio_no, bool pu)
-{
-    SET_PERI_REG_BITS(PERIPHS_IO_MUX_XTAL_32K_P_U + 4 * gpio_no, 0x1, pu, FUN_PU_S);
-}
-
-void dig_gpio_in_en(uint32_t gpio_no, bool enable)
-{
-    SET_PERI_REG_BITS(PERIPHS_IO_MUX_XTAL_32K_P_U + 4 * gpio_no, 0x1, enable, FUN_IE_S);
-}
-
-void dig_gpio_out_en(uint32_t gpio_no, bool enable)
-{
-    if (enable)
-        SET_PERI_REG_MASK(GPIO_ENABLE_W1TS_REG, 1 << gpio_no);
-    else
-        SET_PERI_REG_MASK(GPIO_ENABLE_W1TC_REG, 1 << gpio_no);
-}
-
-void dig_gpio_mcusel(uint32_t gpio_no, uint32_t mcu_sel)
-{
-    SET_PERI_REG_BITS(PERIPHS_IO_MUX_XTAL_32K_P_U + 4 * gpio_no, MCU_SEL, mcu_sel, MCU_SEL_S);
-}
-
-
-void rtc_gpio_hangup(uint32_t gpio_no)
-{
-    dig_gpio_setpd(gpio_no, 0);
-    dig_gpio_setpu(gpio_no, 0);
-    dig_gpio_out_en(gpio_no, 0);
-    dig_gpio_in_en(gpio_no, 0);
-    dig_gpio_mcusel(gpio_no, 1);
 }

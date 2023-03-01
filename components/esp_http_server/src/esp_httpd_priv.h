@@ -107,6 +107,9 @@ struct httpd_data {
     httpd_config_t config;                  /*!< HTTPD server configuration */
     int listen_fd;                          /*!< Server listener FD */
     int ctrl_fd;                            /*!< Ctrl message receiver FD */
+#if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
+    SemaphoreHandle_t ctrl_sock_semaphore;  /*!< Ctrl socket semaphore */
+#endif
     int msg_fd;                             /*!< Ctrl message sender FD */
     struct thread_data hd_td;               /*!< Information for the HTTPD thread */
     struct sock_db *hd_sd;                  /*!< The socket database */
@@ -540,6 +543,12 @@ esp_err_t httpd_sess_trigger_close_(httpd_handle_t handle, struct sock_db *sessi
 /** End of WebSocket related functions
  * @}
  */
+
+/**
+ * @brief Function to dispatch events in default event loop
+ *
+ */
+void esp_http_server_dispatch_event(int32_t event_id, const void* event_data, size_t event_data_size);
 
 #ifdef __cplusplus
 }

@@ -1,12 +1,12 @@
 /*
- * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 #include <string.h>
 #include "sdkconfig.h"
 #include "esp_rom_efuse.h"
-#include "esp_system.h"
+#include "esp_mac.h"
 #include "esp_efuse.h"
 #include "esp_efuse_table.h"
 
@@ -14,6 +14,7 @@
 
 #if CONFIG_ESP32_UNIVERSAL_MAC_ADDRESSES_FOUR   || \
     CONFIG_ESP32S3_UNIVERSAL_MAC_ADDRESSES_FOUR || \
+    CONFIG_ESP32C2_UNIVERSAL_MAC_ADDRESSES_FOUR || \
     CONFIG_ESP32C3_UNIVERSAL_MAC_ADDRESSES_FOUR
 #define MAC_ADDR_UNIVERSE_BT_OFFSET 2
 #else
@@ -71,6 +72,7 @@ esp_err_t esp_efuse_mac_get_custom(uint8_t *mac)
     }
     size_t size = size_bits / 8;
     if (mac[0] == 0 && memcmp(mac, &mac[1], size - 1) == 0) {
+        ESP_LOGE(TAG, "eFuse MAC_CUSTOM is empty");
         return ESP_ERR_INVALID_MAC;
     }
 #if (ESP_MAC_ADDRESS_LEN == 8)
@@ -85,6 +87,7 @@ esp_err_t esp_efuse_mac_get_custom(uint8_t *mac)
     uint8_t version;
     esp_efuse_read_field_blob(ESP_EFUSE_MAC_CUSTOM_VER, &version, 8);
     if (version != 1) {
+        ESP_LOGE(TAG, "Base MAC address from BLK3 of EFUSE version error, version = %d", version);
         return ESP_ERR_INVALID_VERSION;
     }
 

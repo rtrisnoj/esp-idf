@@ -10,20 +10,9 @@
 #include <string.h>
 #include <sys/param.h>
 #include "esp_attr.h"
-#include "hal/cpu_hal.h"
+#include "esp_cpu.h"
 #include "soc/wdev_reg.h"
-
-#if CONFIG_IDF_TARGET_ESP32
-#include "esp32/clk.h"
-#elif CONFIG_IDF_TARGET_ESP32S2
-#include "esp32s2/clk.h"
-#elif CONFIG_IDF_TARGET_ESP32S3
-#include "esp32s3/clk.h"
-#elif CONFIG_IDF_TARGET_ESP32C3
-#include "esp32c3/clk.h"
-#elif CONFIG_IDF_TARGET_ESP32H2
-#include "esp32h2/clk.h"
-#endif
+#include "esp_private/esp_clk.h"
 
 #if defined CONFIG_IDF_TARGET_ESP32S3
 #define APB_CYCLE_WAIT_NUM (1778) /* If APB clock is 80 MHz, maximum sampling frequency is around 45 KHz*/
@@ -58,7 +47,7 @@ uint32_t IRAM_ATTR esp_random(void)
     uint32_t ccount;
     uint32_t result = 0;
     do {
-        ccount = cpu_hal_get_cycle_count();
+        ccount = esp_cpu_get_cycle_count();
         result ^= REG_READ(WDEV_RND_REG);
     } while (ccount - last_ccount < cpu_to_apb_freq_ratio * APB_CYCLE_WAIT_NUM);
     last_ccount = ccount;

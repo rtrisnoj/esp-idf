@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -8,7 +8,6 @@
 #define _ESP_HTTP_CLIENT_H
 
 #include "freertos/FreeRTOS.h"
-#include "http_parser.h"
 #include "sdkconfig.h"
 #include "esp_err.h"
 #include <sys/socket.h>
@@ -35,6 +34,7 @@ typedef enum {
     HTTP_EVENT_ON_DATA,         /*!< Occurs when receiving data from the server, possibly multiple portions of the packet */
     HTTP_EVENT_ON_FINISH,       /*!< Occurs when finish a HTTP session */
     HTTP_EVENT_DISCONNECTED,    /*!< The connection has been disconnected */
+    HTTP_EVENT_REDIRECT,        /*!< Intercepting HTTP redirects to handle them manually */
 } esp_http_client_event_id_t;
 
 /**
@@ -426,9 +426,10 @@ int esp_http_client_write(esp_http_client_handle_t client, const char *buffer, i
  * @return
  *     - (0) if stream doesn't contain content-length header, or chunked encoding (checked by `esp_http_client_is_chunked` response)
  *     - (-1: ESP_FAIL) if any errors
+ *     - (-ESP_ERR_HTTP_EAGAIN = -0x7007) if call is timed-out before any data was ready
  *     - Download data length defined by content-length header
  */
-int esp_http_client_fetch_headers(esp_http_client_handle_t client);
+int64_t esp_http_client_fetch_headers(esp_http_client_handle_t client);
 
 
 /**
@@ -450,6 +451,8 @@ bool esp_http_client_is_chunked_response(esp_http_client_handle_t client);
  * @return
  *     - (-1) if any errors
  *     - Length of data was read
+ *
+ * @note  (-ESP_ERR_HTTP_EAGAIN = -0x7007) is returned when call is timed-out before any data was ready
  */
 int esp_http_client_read(esp_http_client_handle_t client, char *buffer, int len);
 
@@ -473,7 +476,7 @@ int esp_http_client_get_status_code(esp_http_client_handle_t client);
  *     - (-1) Chunked transfer
  *     - Content-Length value as bytes
  */
-int esp_http_client_get_content_length(esp_http_client_handle_t client);
+int64_t esp_http_client_get_content_length(esp_http_client_handle_t client);
 
 /**
  * @brief      Close http connection, still kept all http request resources

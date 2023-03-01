@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -8,6 +8,7 @@
 */
 
 #include <stdio.h>
+#include "sdkconfig.h"
 #include "esp_types.h"
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
@@ -16,84 +17,61 @@
 #include "freertos/queue.h"
 #include "unity.h"
 #include "esp_intr_alloc.h"
-#include "driver/periph_ctrl.h"
-#include "driver/timer.h"
+#include "driver/gptimer.h"
 #include "soc/soc_caps.h"
 #include "soc/spi_periph.h"
 #include "hal/spi_ll.h"
-#include "sdkconfig.h"
+#include "esp_private/periph_ctrl.h"
+#include "esp_private/gptimer.h"
 
-#define TIMER_DIVIDER (16)          /*!< Hardware timer clock divider */
-#define TIMER_SCALE   (APB_CLK_FREQ / TIMER_DIVIDER)  /*!< used to calculate counter value */
-#define TIMER_INTERVAL0_SEC   (3)   /*!< test interval for timer 0 */
-#define TIMER_INTERVAL1_SEC   (5)   /*!< test interval for timer 1 */
-
-static void my_timer_init(int timer_group, int timer_idx, uint64_t alarm_value)
+static bool on_timer_alarm(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
 {
-    timer_config_t config = {
-        .alarm_en = 1,
-        .auto_reload = 1,
-        .counter_dir = TIMER_COUNT_UP,
-        .divider = TIMER_DIVIDER,
-    };
-    /*Configure timer*/
-    timer_init(timer_group, timer_idx, &config);
-    /*Stop timer counter*/
-    timer_pause(timer_group, timer_idx);
-    /*Load counter value */
-    timer_set_counter_value(timer_group, timer_idx, 0);
-    /*Set alarm value*/
-    timer_set_alarm_value(timer_group, timer_idx, alarm_value);
-    /*Enable timer interrupt*/
-    timer_enable_intr(timer_group, timer_idx);
-}
-
-static volatile int count[SOC_TIMER_GROUP_TOTAL_TIMERS] = {0};
-
-static void timer_isr(void *arg)
-{
-    int timer_idx = (int)arg;
-    int group_id = timer_idx / SOC_TIMER_GROUP_TIMERS_PER_GROUP;
-    int timer_id = timer_idx % SOC_TIMER_GROUP_TIMERS_PER_GROUP;
-    count[timer_idx]++;
-
-    timer_group_clr_intr_status_in_isr(group_id, timer_id);
-    timer_group_enable_alarm_in_isr(group_id, timer_id);
+    volatile int *count = (volatile int *)user_ctx;
+    (*count)++;
+    return false;
 }
 
 static void timer_test(int flags)
 {
-    timer_isr_handle_t inth[SOC_TIMER_GROUP_TOTAL_TIMERS];
-    for (int i = 0; i < SOC_TIMER_GROUPS; i++) {
-        for (int j = 0; j < SOC_TIMER_GROUP_TIMERS_PER_GROUP; j++) {
-            my_timer_init(i, j, 100000 + 10000 * (i * SOC_TIMER_GROUP_TIMERS_PER_GROUP + j + 1));
-        }
-    }
-    timer_isr_register(0, 0, timer_isr, (void *)0, flags | ESP_INTR_FLAG_INTRDISABLED, &inth[0]);
-    printf("Interrupts allocated: %d (dis)\r\n", esp_intr_get_intno(inth[0]));
+    static int count[SOC_TIMER_GROUP_TOTAL_TIMERS] = {0};
+    gptimer_handle_t gptimers[SOC_TIMER_GROUP_TOTAL_TIMERS];
+    intr_handle_t inth[SOC_TIMER_GROUP_TOTAL_TIMERS];
 
-    for (int j = 1; j < SOC_TIMER_GROUP_TIMERS_PER_GROUP; j++) {
-        timer_isr_register(0, j, timer_isr, (void *)1, flags, &inth[j]);
-        printf("Interrupts allocated: %d\r\n", esp_intr_get_intno(inth[j]));
-    }
-    for (int i = 1; i < SOC_TIMER_GROUPS; i++) {
-        for (int j = 0; j < SOC_TIMER_GROUP_TIMERS_PER_GROUP; j++) {
-            timer_isr_register(i, j, timer_isr, (void *)(i * SOC_TIMER_GROUP_TIMERS_PER_GROUP + j), flags, &inth[i * SOC_TIMER_GROUP_TIMERS_PER_GROUP + j]);
-            printf("Interrupts allocated: %d\r\n", esp_intr_get_intno(inth[i * SOC_TIMER_GROUP_TIMERS_PER_GROUP + j]));
-        }
-    }
-    for (int i = 0; i < SOC_TIMER_GROUPS; i++) {
-        for (int j = 0; j < SOC_TIMER_GROUP_TIMERS_PER_GROUP; j++) {
-            timer_start(i, j);
-        }
-    }
-
-    printf("Timer values on start:");
+    gptimer_config_t config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = 1000000,
+        .flags.intr_shared = (flags & ESP_INTR_FLAG_SHARED) == ESP_INTR_FLAG_SHARED,
+    };
     for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
-        count[i] = 0;
-        printf(" %d", count[i]);
+        TEST_ESP_OK(gptimer_new_timer(&config, &gptimers[i]));
     }
-    printf("\r\n");
+    gptimer_alarm_config_t alarm_config = {
+        .reload_count = 0,
+        .alarm_count = 100000,
+        .flags.auto_reload_on_alarm = true,
+    };
+    gptimer_event_callbacks_t cbs = {
+        .on_alarm = on_timer_alarm,
+    };
+
+    for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
+        TEST_ESP_OK(gptimer_register_event_callbacks(gptimers[i], &cbs, &count[i]));
+        alarm_config.alarm_count += 10000 * i;
+        TEST_ESP_OK(gptimer_set_alarm_action(gptimers[i], &alarm_config));
+        TEST_ESP_OK(gptimer_enable(gptimers[i]));
+        TEST_ESP_OK(gptimer_start(gptimers[i]));
+        TEST_ESP_OK(gptimer_get_intr_handle(gptimers[i], &inth[i]));
+        printf("Interrupts allocated: %d\r\n", esp_intr_get_intno(inth[i]));
+    }
+
+    if ((flags & ESP_INTR_FLAG_SHARED)) {
+        /* Check that the allocated interrupts are acutally shared */
+        int intr_num = esp_intr_get_intno(inth[0]);
+        for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
+            TEST_ASSERT_EQUAL(intr_num, esp_intr_get_intno(inth[i]));
+        }
+    }
 
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     printf("Timer values after 1 sec:");
@@ -102,19 +80,13 @@ static void timer_test(int flags)
     }
     printf("\r\n");
 
-    TEST_ASSERT(count[0] == 0);
-    for (int i = 1; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
-        TEST_ASSERT(count[i] != 0);
+    for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
+        TEST_ASSERT_NOT_EQUAL(0, count[i]);
     }
 
-    printf("Disabling half of timers' interrupt...\r\n");
-    for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS / 2; i++) {
+    printf("Disabling timers' interrupt...\r\n");
+    for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
         esp_intr_disable(inth[i]);
-    }
-    for (int i = SOC_TIMER_GROUP_TOTAL_TIMERS / 2; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
-        esp_intr_enable(inth[i]);
-    }
-    for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
         count[i] = 0;
     }
 
@@ -124,38 +96,14 @@ static void timer_test(int flags)
         printf(" %d", count[i]);
     }
     printf("\r\n");
-    for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS / 2; i++) {
-        TEST_ASSERT(count[i] == 0);
-    }
-    for (int i = SOC_TIMER_GROUP_TOTAL_TIMERS / 2; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
-        TEST_ASSERT(count[i] != 0);
+    for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
+        TEST_ASSERT_EQUAL(0, count[i]);
     }
 
-    printf("Disabling another half...\r\n");
-    for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS / 2; i++) {
-        esp_intr_enable(inth[i]);
-    }
-    for (int i = SOC_TIMER_GROUP_TOTAL_TIMERS / 2; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
-        esp_intr_disable(inth[i]);
-    }
-    for (int x = 0; x < SOC_TIMER_GROUP_TOTAL_TIMERS; x++) {
-        count[x] = 0;
-    }
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    printf("Timer values after 1 sec:");
     for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
-        printf(" %d", count[i]);
-    }
-    printf("\r\n");
-    for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS / 2; i++) {
-        TEST_ASSERT(count[i] != 0);
-    }
-    for (int i = SOC_TIMER_GROUP_TOTAL_TIMERS / 2; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
-        TEST_ASSERT(count[i] == 0);
-    }
-    printf("Done.\n");
-    for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
-        esp_intr_free(inth[i]);
+        TEST_ESP_OK(gptimer_stop(gptimers[i]));
+        TEST_ESP_OK(gptimer_disable(gptimers[i]));
+        TEST_ESP_OK(gptimer_del_timer(gptimers[i]));
     }
 }
 
@@ -167,6 +115,27 @@ TEST_CASE("Intr_alloc test, private ints", "[intr_alloc]")
 TEST_CASE("Intr_alloc test, shared ints", "[intr_alloc]")
 {
     timer_test(ESP_INTR_FLAG_SHARED);
+}
+
+void static test_isr(void*arg)
+{
+    /* ISR should never be called */
+    abort();
+}
+
+
+TEST_CASE("Allocate previously freed interrupt, with different flags", "[intr_alloc]")
+{
+    intr_handle_t intr;
+    int test_intr_source = ETS_GPIO_INTR_SOURCE;
+    int isr_flags = ESP_INTR_FLAG_LEVEL2;
+
+    TEST_ESP_OK(esp_intr_alloc(test_intr_source, isr_flags, test_isr, NULL, &intr));
+    TEST_ESP_OK(esp_intr_free(intr));
+
+    isr_flags = ESP_INTR_FLAG_LEVEL3;
+    TEST_ESP_OK(esp_intr_alloc(test_intr_source, isr_flags, test_isr, NULL, &intr));
+    TEST_ESP_OK(esp_intr_free(intr));
 }
 
 typedef struct {
@@ -256,6 +225,9 @@ TEST_CASE("allocate 2 handlers for a same source and remove the later one", "[in
     esp_intr_free(handle1);
 }
 
+
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+//IDF-5061
 static void dummy(void *arg)
 {
 }
@@ -284,6 +256,8 @@ TEST_CASE("Can allocate IRAM int only with an IRAM handler", "[intr_alloc]")
     TEST_ESP_OK(err);
 }
 
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+
 #ifndef CONFIG_FREERTOS_UNICORE
 void isr_free_task(void *param)
 {
@@ -309,7 +283,7 @@ void isr_alloc_free_test(void)
     }
     TEST_ASSERT(ret == ESP_OK);
     xTaskCreatePinnedToCore(isr_free_task, "isr_free_task", 1024 * 2, (void *)&test_handle, 10, NULL, !xPortGetCoreID());
-    vTaskDelay(1000 / portTICK_RATE_MS);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     TEST_ASSERT(test_handle == NULL);
     printf("test passed\n");
 }

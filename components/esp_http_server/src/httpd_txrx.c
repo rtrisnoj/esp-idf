@@ -281,6 +281,7 @@ esp_err_t httpd_resp_send(httpd_req_t *r, const char *buf, ssize_t buf_len)
     if (httpd_send_all(r, cr_lf_seperator, strlen(cr_lf_seperator)) != ESP_OK) {
         return ESP_ERR_HTTPD_RESP_SEND;
     }
+    esp_http_server_dispatch_event(HTTP_SERVER_EVENT_HEADERS_SENT, &(ra->sd->fd), sizeof(int));
 
     /* Sending content */
     if (buf && buf_len) {
@@ -288,6 +289,11 @@ esp_err_t httpd_resp_send(httpd_req_t *r, const char *buf, ssize_t buf_len)
             return ESP_ERR_HTTPD_RESP_SEND;
         }
     }
+    esp_http_server_event_data evt_data = {
+        .fd = ra->sd->fd,
+        .data_len = buf_len,
+    };
+    esp_http_server_dispatch_event(HTTP_SERVER_EVENT_SENT_DATA, &evt_data, sizeof(esp_http_server_event_data));
     return ESP_OK;
 }
 
@@ -369,6 +375,12 @@ esp_err_t httpd_resp_send_chunk(httpd_req_t *r, const char *buf, ssize_t buf_len
     if (httpd_send_all(r, "\r\n", strlen("\r\n")) != ESP_OK) {
         return ESP_ERR_HTTPD_RESP_SEND;
     }
+    esp_http_server_event_data evt_data = {
+        .fd = ra->sd->fd,
+        .data_len = buf_len,
+    };
+    esp_http_server_dispatch_event(HTTP_SERVER_EVENT_SENT_DATA, &evt_data, sizeof(esp_http_server_event_data));
+
     return ESP_OK;
 }
 
@@ -381,7 +393,7 @@ esp_err_t httpd_resp_send_err(httpd_req_t *req, httpd_err_code_t error, const ch
     switch (error) {
         case HTTPD_501_METHOD_NOT_IMPLEMENTED:
             status = "501 Method Not Implemented";
-            msg    = "Request method is not supported by server";
+            msg    = "Server does not support this method";
             break;
         case HTTPD_505_VERSION_NOT_SUPPORTED:
             status = "505 Version Not Supported";
@@ -389,23 +401,23 @@ esp_err_t httpd_resp_send_err(httpd_req_t *req, httpd_err_code_t error, const ch
             break;
         case HTTPD_400_BAD_REQUEST:
             status = "400 Bad Request";
-            msg    = "Server unable to understand request due to invalid syntax";
+            msg    = "Bad request syntax";
             break;
         case HTTPD_401_UNAUTHORIZED:
             status = "401 Unauthorized";
-            msg    = "Server known the client's identify and it must authenticate itself to get he requested response";
+            msg    = "No permission -- see authorization schemes";
             break;
         case HTTPD_403_FORBIDDEN:
             status = "403 Forbidden";
-            msg    = "Server is refusing to give the requested resource to the client";
+            msg    = "Request forbidden -- authorization will not help";
             break;
         case HTTPD_404_NOT_FOUND:
             status = "404 Not Found";
-            msg    = "This URI does not exist";
+            msg    = "Nothing matches the given URI";
             break;
         case HTTPD_405_METHOD_NOT_ALLOWED:
             status = "405 Method Not Allowed";
-            msg    = "Request method for this URI is not handled by server";
+            msg    = "Specified method is invalid for this resource";
             break;
         case HTTPD_408_REQ_TIMEOUT:
             status = "408 Request Timeout";
@@ -413,15 +425,15 @@ esp_err_t httpd_resp_send_err(httpd_req_t *req, httpd_err_code_t error, const ch
             break;
         case HTTPD_414_URI_TOO_LONG:
             status = "414 URI Too Long";
-            msg    = "URI is too long for server to interpret";
+            msg    = "URI is too long";
             break;
         case HTTPD_411_LENGTH_REQUIRED:
             status = "411 Length Required";
-            msg    = "Chunked encoding not supported by server";
+            msg    = "Client must specify Content-Length";
             break;
         case HTTPD_431_REQ_HDR_FIELDS_TOO_LARGE:
             status = "431 Request Header Fields Too Large";
-            msg    = "Header fields are too long for server to interpret";
+            msg    = "Header fields are too long";
             break;
         case HTTPD_500_INTERNAL_SERVER_ERROR:
         default:
@@ -465,6 +477,7 @@ esp_err_t httpd_resp_send_err(httpd_req_t *req, httpd_err_code_t error, const ch
         }
     }
 #endif
+    esp_http_server_dispatch_event(HTTP_SERVER_EVENT_ERROR, &error, sizeof(httpd_err_code_t));
 
     return ret;
 }
@@ -532,6 +545,11 @@ int httpd_req_recv(httpd_req_t *r, char *buf, size_t buf_len)
     }
     ra->remaining_len -= ret;
     ESP_LOGD(TAG, LOG_FMT("received length = %d"), ret);
+    esp_http_server_event_data evt_data = {
+        .fd = ra->sd->fd,
+        .data_len = ret,
+    };
+    esp_http_server_dispatch_event(HTTP_SERVER_EVENT_ON_DATA, &evt_data, sizeof(esp_http_server_event_data));
     return ret;
 }
 

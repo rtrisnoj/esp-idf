@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -11,23 +11,23 @@
 #include "xtensa/core-macros.h"
 #include "xtensa/hal.h"
 #include "esp_types.h"
-#include "esp32/clk.h"
+#include "esp_private/esp_clk.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "freertos/xtensa_timer.h"
-#include "soc/cpu.h"
+#include "driver/uart.h"
 #include "unity.h"
 #include "test_utils.h"
 #include "esp_rom_uart.h"
 #include "hal/uart_types.h"
 #include "hal/uart_ll.h"
 #include "soc/dport_reg.h"
+#include "dport_access.h"
 #include "soc/rtc.h"
-#include "hal/cpu_hal.h"
+#include "esp_cpu.h"
 #include "esp_intr_alloc.h"
-#include "driver/timer.h"
 
 
 #define MHZ (1000000)
@@ -38,7 +38,7 @@ uint32_t volatile apb_intr_test_result;
 
 static void accessDPORT(void *pvParameters)
 {
-    xSemaphoreHandle *sema = (xSemaphoreHandle *) pvParameters;
+    SemaphoreHandle_t *sema = (SemaphoreHandle_t *) pvParameters;
     uint32_t dport_date = DPORT_REG_READ(DPORT_DATE_REG);
 
     dport_test_result = true;
@@ -57,7 +57,7 @@ static void accessDPORT(void *pvParameters)
 
 static void accessAPB(void *pvParameters)
 {
-    xSemaphoreHandle *sema = (xSemaphoreHandle *) pvParameters;
+    SemaphoreHandle_t *sema = (SemaphoreHandle_t *) pvParameters;
     uint32_t uart_date = REG_READ(UART_DATE_REG(0));
 
     apb_test_result = true;
@@ -79,7 +79,7 @@ void run_tasks(const char *task1_description, void (* task1_func)(void *), const
     apb_intr_test_result = 1;
     int i;
     TaskHandle_t th[2];
-    xSemaphoreHandle exit_sema[2];
+    SemaphoreHandle_t exit_sema[2];
 
     for (i=0; i<2; i++) {
         if((task1_func != NULL && i == 0) || (task2_func != NULL && i == 1)){
@@ -140,8 +140,11 @@ void run_tasks_with_change_freq_cpu(int cpu_freq_mhz)
 
         esp_rom_uart_tx_wait_idle(uart_num);
         rtc_clk_cpu_freq_set_config(&new_config);
-        uart_ll_set_sclk(UART_LL_GET_HW(uart_num), UART_SCLK_APB);
-        uart_ll_set_baudrate(UART_LL_GET_HW(uart_num), uart_baud);
+        uart_ll_set_sclk(UART_LL_GET_HW(uart_num), UART_SCLK_DEFAULT);
+
+        uint32_t sclk_freq;
+        TEST_ESP_OK(uart_get_sclk_freq(UART_SCLK_DEFAULT, &sclk_freq));
+        uart_ll_set_baudrate(UART_LL_GET_HW(uart_num), uart_baud, sclk_freq);
         /* adjust RTOS ticks */
         _xt_tick_divisor = cpu_freq_mhz * 1000000 / XT_TICK_PER_SEC;
         vTaskDelay(2);
@@ -153,8 +156,11 @@ void run_tasks_with_change_freq_cpu(int cpu_freq_mhz)
     // return old freq.
     esp_rom_uart_tx_wait_idle(uart_num);
     rtc_clk_cpu_freq_set_config(&old_config);
-    uart_ll_set_sclk(UART_LL_GET_HW(uart_num), UART_SCLK_APB);
-    uart_ll_set_baudrate(UART_LL_GET_HW(uart_num), uart_baud);
+    uart_ll_set_sclk(UART_LL_GET_HW(uart_num), UART_SCLK_DEFAULT);
+
+    uint32_t sclk_freq;
+    TEST_ESP_OK(uart_get_sclk_freq(UART_SCLK_DEFAULT, &sclk_freq));
+    uart_ll_set_baudrate(UART_LL_GET_HW(uart_num), uart_baud, sclk_freq);
     _xt_tick_divisor = old_config.freq_mhz * 1000000 / XT_TICK_PER_SEC;
 }
 
@@ -165,7 +171,7 @@ TEST_CASE("access DPORT and APB at same time (Freq CPU and APB = 80 MHz)", "[esp
 
 TEST_CASE("access DPORT and APB at same time (Freq CPU and APB = 40 MHz (XTAL))", "[esp32]")
 {
-    run_tasks_with_change_freq_cpu((int) rtc_clk_xtal_freq_get());
+    run_tasks_with_change_freq_cpu(esp_clk_xtal_freq() / MHZ);
 }
 
 static uint32_t stall_other_cpu_counter;
@@ -174,7 +180,7 @@ static uint32_t apb_counter;
 
 static void accessDPORT_stall_other_cpu(void *pvParameters)
 {
-    xSemaphoreHandle *sema = (xSemaphoreHandle *) pvParameters;
+    SemaphoreHandle_t *sema = (SemaphoreHandle_t *) pvParameters;
     uint32_t dport_date = DPORT_REG_READ(DPORT_DATE_REG);
     uint32_t dport_date_cur;
     dport_test_result = true;
@@ -197,7 +203,7 @@ static void accessDPORT_stall_other_cpu(void *pvParameters)
 
 static void accessAPB_measure_performance(void *pvParameters)
 {
-    xSemaphoreHandle *sema = (xSemaphoreHandle *) pvParameters;
+    SemaphoreHandle_t *sema = (SemaphoreHandle_t *) pvParameters;
     uint32_t uart_date = REG_READ(UART_DATE_REG(0));
 
     apb_test_result = true;
@@ -217,7 +223,7 @@ static void accessAPB_measure_performance(void *pvParameters)
 
 static void accessDPORT_pre_reading_apb(void *pvParameters)
 {
-    xSemaphoreHandle *sema = (xSemaphoreHandle *) pvParameters;
+    SemaphoreHandle_t *sema = (SemaphoreHandle_t *) pvParameters;
     uint32_t dport_date = DPORT_REG_READ(DPORT_DATE_REG);
     uint32_t dport_date_cur;
     dport_test_result = true;
@@ -347,8 +353,8 @@ TEST_CASE("BENCHMARK for DPORT access performance", "[freertos]")
 uint32_t xt_highint5_read_apb;
 
 #ifndef CONFIG_FREERTOS_UNICORE
-timer_isr_handle_t inth;
-xSemaphoreHandle sync_sema;
+intr_handle_t inth;
+SemaphoreHandle_t sync_sema;
 
 static void init_hi_interrupt(void *arg)
 {
@@ -362,11 +368,11 @@ static void init_hi_interrupt(void *arg)
 
 static void accessDPORT2_stall_other_cpu(void *pvParameters)
 {
-    xSemaphoreHandle *sema = (xSemaphoreHandle *) pvParameters;
+    SemaphoreHandle_t *sema = (SemaphoreHandle_t *) pvParameters;
     dport_test_result = true;
     while (exit_flag == false) {
         DPORT_STALL_OTHER_CPU_START();
-        XTHAL_SET_CCOMPARE(2, cpu_hal_get_cycle_count());
+        XTHAL_SET_CCOMPARE(2, esp_cpu_get_cycle_count());
         xt_highint5_read_apb = 1;
         for (int i = 0; i < 200; ++i) {
             if (_DPORT_REG_READ(DPORT_DATE_REG) != _DPORT_REG_READ(DPORT_DATE_REG)) {
@@ -397,13 +403,13 @@ TEST_CASE("Check stall workaround DPORT and Hi-interrupt", "[esp32]")
 
 static void accessDPORT2(void *pvParameters)
 {
-    xSemaphoreHandle *sema = (xSemaphoreHandle *) pvParameters;
+    SemaphoreHandle_t *sema = (SemaphoreHandle_t *) pvParameters;
     dport_test_result = true;
 
     TEST_ESP_OK(esp_intr_alloc(ETS_INTERNAL_TIMER2_INTR_SOURCE, ESP_INTR_FLAG_LEVEL5 | ESP_INTR_FLAG_IRAM, NULL, NULL, &inth));
 
     while (exit_flag == false) {
-        XTHAL_SET_CCOMPARE(2, cpu_hal_get_cycle_count() + 21);
+        XTHAL_SET_CCOMPARE(2, esp_cpu_get_cycle_count() + 21);
         for (int i = 0; i < 200; ++i) {
             if (DPORT_REG_READ(DPORT_DATE_REG) != DPORT_REG_READ(DPORT_DATE_REG)) {
                 dport_test_result = false;
@@ -446,17 +452,17 @@ which is critical for the DPORT pre-read workaround. To fix it we added addition
 */
 static uint32_t IRAM_ATTR test_dport_access_reg_read(uint32_t reg)
 {
-#if defined(BOOTLOADER_BUILD) || !defined(CONFIG_ESP32_DPORT_WORKAROUND) || !defined(ESP_PLATFORM)
+#if defined(BOOTLOADER_BUILD) || defined(CONFIG_FREERTOS_UNICORE) || !SOC_DPORT_WORKAROUND
     return _DPORT_REG_READ(reg);
 #else
     uint32_t apb;
     unsigned int intLvl;
-    XTHAL_SET_CCOMPARE(2, cpu_hal_get_cycle_count() + s_shift_counter);
+    XTHAL_SET_CCOMPARE(2, esp_cpu_get_cycle_count() + s_shift_counter);
     __asm__ __volatile__ (\
                   /* "movi %[APB], "XTSTR(0x3ff40078)"\n" */ /* (1) uncomment for reproduce issue */ \
                   "bnez %[APB], kl1\n" /* this branch command helps get good reproducing */ \
                   "kl1:\n"\
-                  "rsil %[LVL], "XTSTR(CONFIG_ESP32_DPORT_DIS_INTERRUPT_LVL)"\n"\
+                  "rsil %[LVL], "XTSTR(SOC_DPORT_WORKAROUND_DIS_INTERRUPT_LVL)"\n"\
                   "movi %[APB], "XTSTR(0x3ff40078)"\n" /* (2) comment for reproduce issue */ \
                   "l32i %[APB], %[APB], 0\n"\
                   "l32i %[REG], %[REG], 0\n"\
@@ -473,7 +479,7 @@ static uint32_t IRAM_ATTR test_dport_access_reg_read(uint32_t reg)
 // The accessDPORT3 task is similar accessDPORT2 but uses test_dport_access_reg_read() instead of usual DPORT_REG_READ().
 static void accessDPORT3(void *pvParameters)
 {
-    xSemaphoreHandle *sema = (xSemaphoreHandle *) pvParameters;
+    SemaphoreHandle_t *sema = (SemaphoreHandle_t *) pvParameters;
     dport_test_result = true;
 
     TEST_ESP_OK(esp_intr_alloc(ETS_INTERNAL_TIMER2_INTR_SOURCE, ESP_INTR_FLAG_LEVEL5 | ESP_INTR_FLAG_IRAM, NULL, NULL, &inth));

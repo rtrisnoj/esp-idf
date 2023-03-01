@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2020-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2020-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -14,8 +14,11 @@
 #include "soc/spi_mem_reg.h"
 #include "soc/extmem_reg.h"
 #include "soc/system_reg.h"
+#include "hal/efuse_hal.h"
 #include "regi2c_ctrl.h"
-#include "soc_log.h"
+#include "soc/regi2c_dig_reg.h"
+#include "soc/regi2c_lp_bias.h"
+#include "esp_hw_log.h"
 #include "esp_efuse.h"
 #include "esp_efuse_table.h"
 
@@ -50,10 +53,10 @@ void rtc_init(rtc_config_t cfg)
 
     if (cfg.cali_ocode) {
         uint32_t rtc_calib_version = 0;
-        esp_err_t err = esp_efuse_read_field_blob(ESP_EFUSE_BLOCK2_VERSION, &rtc_calib_version, 3);
+        esp_err_t err = esp_efuse_read_field_blob(ESP_EFUSE_BLK_VERSION_MAJOR, &rtc_calib_version, ESP_EFUSE_BLK_VERSION_MAJOR[0]->bit_count); // IDF-5366
         if (err != ESP_OK) {
             rtc_calib_version = 0;
-            SOC_LOGW(TAG, "efuse read fail, set default rtc_calib_version: %d\n", rtc_calib_version);
+            ESP_HW_LOGW(TAG, "efuse read fail, set default rtc_calib_version: %d\n", rtc_calib_version);
         }
         if (rtc_calib_version == 1) {
             set_ocode_by_efuse(rtc_calib_version);
@@ -216,13 +219,11 @@ static void calibrate_ocode(void)
     4. wait o-code calibration done flag(odone_flag & bg_odone_flag) or timeout;
     5. set cpu to old-config.
     */
-    rtc_slow_freq_t slow_clk_freq = rtc_clk_slow_freq_get();
-    rtc_slow_freq_t rtc_slow_freq_x32k = RTC_SLOW_FREQ_32K_XTAL;
-    rtc_slow_freq_t rtc_slow_freq_8MD256 = RTC_SLOW_FREQ_8MD256;
+    soc_rtc_slow_clk_src_t slow_clk_src = rtc_clk_slow_src_get();
     rtc_cal_sel_t cal_clk = RTC_CAL_RTC_MUX;
-    if (slow_clk_freq == (rtc_slow_freq_x32k)) {
+    if (slow_clk_src == SOC_RTC_SLOW_CLK_SRC_XTAL32K) {
         cal_clk = RTC_CAL_32K_XTAL;
-    } else if (slow_clk_freq == rtc_slow_freq_8MD256) {
+    } else if (slow_clk_src == SOC_RTC_SLOW_CLK_SRC_RC_FAST_D256) {
         cal_clk  = RTC_CAL_8MD256;
     }
 
@@ -249,7 +250,7 @@ static void calibrate_ocode(void)
             break;
         }
         if (cycle1 >= timeout_cycle) {
-            SOC_LOGW(TAG, "o_code calibration fail\n");
+            ESP_HW_LOGW(TAG, "o_code calibration fail\n");
             break;
         }
     }
@@ -263,7 +264,7 @@ static uint32_t get_dig_dbias_by_efuse(uint8_t chip_version)
     esp_err_t err = esp_efuse_read_field_blob(ESP_EFUSE_DIG_DBIAS_HVT, &dig_dbias, 5);
     if (err != ESP_OK) {
         dig_dbias = 28;
-        SOC_LOGW(TAG, "efuse read fail, set default dig_dbias value: %d\n", dig_dbias);
+        ESP_HW_LOGW(TAG, "efuse read fail, set default dig_dbias value: %d\n", dig_dbias);
     }
     return dig_dbias;
 }
@@ -282,7 +283,7 @@ uint32_t get_rtc_dbias_by_efuse(uint8_t chip_version, uint32_t dig_dbias)
         k_dig_ldo = 0;
         v_rtc_bias20 = 0;
         v_dig_bias20 = 0;
-        SOC_LOGW(TAG, "efuse read fail, k_rtc_ldo: %d, k_dig_ldo: %d, v_rtc_bias20: %d,  v_dig_bias20: %d\n", k_rtc_ldo, k_dig_ldo, v_rtc_bias20, v_dig_bias20);
+        ESP_HW_LOGW(TAG, "efuse read fail, k_rtc_ldo: %d, k_dig_ldo: %d, v_rtc_bias20: %d,  v_dig_bias20: %d\n", k_rtc_ldo, k_dig_ldo, v_rtc_bias20, v_dig_bias20);
     }
 
     k_rtc_ldo =  ((k_rtc_ldo & BIT(6)) != 0)? -(k_rtc_ldo & 0x3f): k_rtc_ldo;
@@ -316,23 +317,23 @@ static void set_rtc_dig_dbias()
     3. a reasonable rtc_dbias can be calculated by a certion formula.
     */
     uint32_t rtc_dbias = 28, dig_dbias = 28;
-    uint8_t chip_version = esp_efuse_get_chip_ver();
+    unsigned chip_version = efuse_hal_chip_revision();
     if (chip_version >= 3) {
         dig_dbias = get_dig_dbias_by_efuse(chip_version);
         if (dig_dbias != 0) {
-            if (dig_dbias + 4 > 28) {
-                dig_dbias = 28;
+            if (dig_dbias + 4 > 31) {
+                dig_dbias = 31;
             } else {
                 dig_dbias += 4;
             }
             rtc_dbias = get_rtc_dbias_by_efuse(chip_version, dig_dbias); // already burn dig_dbias in efuse
         } else {
             dig_dbias = 28;
-            SOC_LOGD(TAG, "not burn core voltage in efuse or burn wrong voltage value in chip version: 0%d\n", chip_version);
+            ESP_HW_LOGD(TAG, "not burn core voltage in efuse or burn wrong voltage value in chip version: 0%d\n", chip_version);
         }
     }
     else {
-        SOC_LOGD(TAG, "chip_version is less than 3, not burn core voltage in efuse\n");
+        ESP_HW_LOGD(TAG, "chip_version is less than 3, not burn core voltage in efuse\n");
     }
     REGI2C_WRITE_MASK(I2C_DIG_REG, I2C_DIG_REG_EXT_RTC_DREG, rtc_dbias);
     REGI2C_WRITE_MASK(I2C_DIG_REG, I2C_DIG_REG_EXT_DIG_DREG, dig_dbias);

@@ -8,15 +8,10 @@ set(srcs
     "rtc_pm.c"
     "rtc_sleep.c"
     "rtc_time.c"
-    "rtc_wdt.c"
     "chip_info.c")
 
 if(NOT BOOTLOADER_BUILD)
-    list(APPEND srcs "cache_sram_mmu.c"
-                     "dport_access.c"
-                     "esp_himem.c"
-                     "spiram.c"
-                     "spiram_psram.c")
+    list(APPEND srcs "cache_sram_mmu.c")
 endif()
 
 add_prefix(srcs "${CMAKE_CURRENT_LIST_DIR}/" "${srcs}")

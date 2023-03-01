@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -15,8 +15,10 @@
 #include "soc/extmem_reg.h"
 #include "soc/syscon_reg.h"
 #include "regi2c_ctrl.h"
-#include "regi2c_ulp.h"
-#include "soc_log.h"
+#include "soc/regi2c_lp_bias.h"
+#include "soc/regi2c_ulp.h"
+#include "soc/regi2c_dig_reg.h"
+#include "esp_hw_log.h"
 #include "esp_err.h"
 #include "esp_attr.h"
 #include "esp_efuse.h"
@@ -67,13 +69,15 @@ void rtc_init(rtc_config_t cfg)
     /* Reset RTC bias to default value (needed if waking up from deep sleep) */
     REGI2C_WRITE_MASK(I2C_DIG_REG, I2C_DIG_REG_EXT_RTC_DREG_SLEEP, RTC_CNTL_DBIAS_1V10);
     REGI2C_WRITE_MASK(I2C_DIG_REG, I2C_DIG_REG_EXT_RTC_DREG, RTC_CNTL_DBIAS_1V10);
+    /* Set the wait time to the default value. */
+    REG_SET_FIELD(RTC_CNTL_TIMER2_REG, RTC_CNTL_ULPCP_TOUCH_START_WAIT, RTC_CNTL_ULPCP_TOUCH_START_WAIT_DEFAULT);
 
     if (cfg.cali_ocode) {
         uint32_t blk_ver_major = 0;
-        esp_err_t err = esp_efuse_read_field_blob(ESP_EFUSE_BLK_VER_MAJOR, &blk_ver_major, ESP_EFUSE_BLK_VER_MAJOR[0]->bit_count);
+        esp_err_t err = esp_efuse_read_field_blob(ESP_EFUSE_BLK_VERSION_MAJOR, &blk_ver_major, ESP_EFUSE_BLK_VERSION_MAJOR[0]->bit_count); // IDF-5366
         if (err != ESP_OK) {
             blk_ver_major = 0;
-            SOC_LOGW(TAG, "efuse read fail, set default blk_ver_major: %d\n", blk_ver_major);
+            ESP_HW_LOGW(TAG, "efuse read fail, set default blk_ver_major: %d\n", blk_ver_major);
         }
 
         //default blk_ver_major will fallback to using the self-calibration way for OCode
@@ -256,13 +260,11 @@ static void calibrate_ocode(void)
     4. wait o-code calibration done flag(odone_flag & bg_odone_flag) or timeout;
     5. set cpu to old-config.
     */
-    rtc_slow_freq_t slow_clk_freq = rtc_clk_slow_freq_get();
-    rtc_slow_freq_t rtc_slow_freq_x32k = RTC_SLOW_FREQ_32K_XTAL;
-    rtc_slow_freq_t rtc_slow_freq_8MD256 = RTC_SLOW_FREQ_8MD256;
+    soc_rtc_slow_clk_src_t slow_clk_src = rtc_clk_slow_src_get();
     rtc_cal_sel_t cal_clk = RTC_CAL_RTC_MUX;
-    if (slow_clk_freq == (rtc_slow_freq_x32k)) {
+    if (slow_clk_src == SOC_RTC_SLOW_CLK_SRC_XTAL32K) {
         cal_clk = RTC_CAL_32K_XTAL;
-    } else if (slow_clk_freq == rtc_slow_freq_8MD256) {
+    } else if (slow_clk_src == SOC_RTC_SLOW_CLK_SRC_RC_FAST_D256) {
         cal_clk  = RTC_CAL_8MD256;
     }
 
@@ -289,7 +291,7 @@ static void calibrate_ocode(void)
             break;
         }
         if (cycle1 >= timeout_cycle) {
-            SOC_LOGW(TAG, "o_code calibration fail\n");
+            ESP_HW_LOGW(TAG, "o_code calibration fail\n");
             break;
         }
     }
