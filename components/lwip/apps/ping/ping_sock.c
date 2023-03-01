@@ -1,16 +1,8 @@
-// Copyright 2019 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2019-2021 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <stdlib.h>
 #include <stdbool.h>
@@ -30,19 +22,9 @@
 #include "lwip/sockets.h"
 #include "esp_log.h"
 #include "ping/ping_sock.h"
+#include "esp_check.h"
 
 const static char *TAG = "ping_sock";
-
-#define PING_CHECK(a, str, goto_tag, ret_value, ...)                              \
-    do                                                                            \
-    {                                                                             \
-        if (!(a))                                                                 \
-        {                                                                         \
-            ESP_LOGE(TAG, "%s(%d): " str, __FUNCTION__, __LINE__, ##__VA_ARGS__); \
-            ret = ret_value;                                                      \
-            goto goto_tag;                                                        \
-        }                                                                         \
-    } while (0)
 
 #define PING_TIME_DIFF_MS(_end, _start) ((uint32_t)(((_end).tv_sec - (_start).tv_sec) * 1000 + \
                                                     ((_end).tv_usec - (_start).tv_usec) / 1000))
@@ -67,6 +49,7 @@ typedef struct {
     uint32_t elapsed_time_ms;
     uint32_t total_time_ms;
     uint8_t ttl;
+    uint8_t tos;
     uint32_t flags;
     void (*on_ping_success)(esp_ping_handle_t hdl, void *args);
     void (*on_ping_timeout)(esp_ping_handle_t hdl, void *args);
@@ -131,6 +114,7 @@ static int esp_ping_receive(esp_ping_t *ep)
                 if ((iecho->id == ep->packet_hdr->id) && (iecho->seqno == ep->packet_hdr->seqno)) {
                     ep->received++;
                     ep->ttl = iphdr->_ttl;
+                    ep->tos = iphdr->_tos;
                     ep->recv_len = lwip_ntohs(IPH_LEN(iphdr)) - data_head;  // The data portion of ICMP
                     return len;
                 }
@@ -216,11 +200,11 @@ esp_err_t esp_ping_new_session(const esp_ping_config_t *config, const esp_ping_c
 {
     esp_err_t ret = ESP_FAIL;
     esp_ping_t *ep = NULL;
-    PING_CHECK(config, "ping config can't be null", err, ESP_ERR_INVALID_ARG);
-    PING_CHECK(hdl_out, "ping handle can't be null", err, ESP_ERR_INVALID_ARG);
+    ESP_GOTO_ON_FALSE(config, ESP_ERR_INVALID_ARG, err, TAG, "ping config can't be null");
+    ESP_GOTO_ON_FALSE(hdl_out, ESP_ERR_INVALID_ARG, err, TAG, "ping handle can't be null");
 
     ep = mem_calloc(1, sizeof(esp_ping_t));
-    PING_CHECK(ep, "no memory for esp_ping object", err, ESP_ERR_NO_MEM);
+    ESP_GOTO_ON_FALSE(ep, ESP_ERR_NO_MEM, err, TAG, "no memory for esp_ping object");
 
     /* set INIT flag, so that ping task won't exit (must set before create ping task) */
     ep->flags |= PING_FLAGS_INIT;
@@ -228,7 +212,7 @@ esp_err_t esp_ping_new_session(const esp_ping_config_t *config, const esp_ping_c
     /* create ping thread */
     BaseType_t xReturned = xTaskCreate(esp_ping_thread, "ping", config->task_stack_size, ep,
                                        config->task_prio, &ep->ping_task_hdl);
-    PING_CHECK(xReturned == pdTRUE, "create ping task failed", err, ESP_ERR_NO_MEM);
+    ESP_GOTO_ON_FALSE(xReturned == pdTRUE, ESP_ERR_NO_MEM, err, TAG, "create ping task failed");
 
     /* callback functions */
     if (cbs) {
@@ -243,7 +227,7 @@ esp_err_t esp_ping_new_session(const esp_ping_config_t *config, const esp_ping_c
     ep->interval_ms = config->interval_ms;
     ep->icmp_pkt_size = sizeof(struct icmp_echo_hdr) + config->data_size;
     ep->packet_hdr = mem_calloc(1, ep->icmp_pkt_size);
-    PING_CHECK(ep->packet_hdr, "no memory for echo packet", err, ESP_ERR_NO_MEM);
+    ESP_GOTO_ON_FALSE(ep->packet_hdr,ESP_ERR_NO_MEM, err, TAG, "no memory for echo packet");
     /* set ICMP type and code field */
     ep->packet_hdr->code = 0;
     /* ping id should be unique, treat task handle as ping ID */
@@ -267,7 +251,7 @@ esp_err_t esp_ping_new_session(const esp_ping_config_t *config, const esp_ping_c
         ep->sock = socket(AF_INET6, SOCK_RAW, IP6_NEXTH_ICMP6);
     }
 #endif
-    PING_CHECK(ep->sock > 0, "create socket failed: %d", err, ESP_FAIL, ep->sock);
+    ESP_GOTO_ON_FALSE(ep->sock >= 0, ESP_FAIL, err, TAG, "create socket failed: %d", ep->sock);
     /* set if index */
     if(config->interface) {
         struct ifreq iface;
@@ -288,6 +272,9 @@ esp_err_t esp_ping_new_session(const esp_ping_config_t *config, const esp_ping_c
 
     /* set tos */
     setsockopt(ep->sock, IPPROTO_IP, IP_TOS, &config->tos, sizeof(config->tos));
+
+    /* set ttl */
+    setsockopt(ep->sock, IPPROTO_IP, IP_TTL, &config->ttl, sizeof(config->ttl));
 
     /* set socket address */
     if (IP_IS_V4(&config->target_addr)) {
@@ -327,7 +314,7 @@ esp_err_t esp_ping_delete_session(esp_ping_handle_t hdl)
 {
     esp_err_t ret = ESP_OK;
     esp_ping_t *ep = (esp_ping_t *)hdl;
-    PING_CHECK(ep, "ping handle can't be null", err, ESP_ERR_INVALID_ARG);
+    ESP_GOTO_ON_FALSE(ep, ESP_ERR_INVALID_ARG, err, TAG, "ping handle can't be null");
     /* reset init flags, then ping task will exit */
     ep->flags &= ~PING_FLAGS_INIT;
     return ESP_OK;
@@ -339,7 +326,7 @@ esp_err_t esp_ping_start(esp_ping_handle_t hdl)
 {
     esp_err_t ret = ESP_OK;
     esp_ping_t *ep = (esp_ping_t *)hdl;
-    PING_CHECK(ep, "ping handle can't be null", err, ESP_ERR_INVALID_ARG);
+    ESP_GOTO_ON_FALSE(ep, ESP_ERR_INVALID_ARG, err, TAG, "ping handle can't be null");
     ep->flags |= PING_FLAGS_START;
     xTaskNotifyGive(ep->ping_task_hdl);
     return ESP_OK;
@@ -351,7 +338,7 @@ esp_err_t esp_ping_stop(esp_ping_handle_t hdl)
 {
     esp_err_t ret = ESP_OK;
     esp_ping_t *ep = (esp_ping_t *)hdl;
-    PING_CHECK(ep, "ping handle can't be null", err, ESP_ERR_INVALID_ARG);
+    ESP_GOTO_ON_FALSE(ep, ESP_ERR_INVALID_ARG, err, TAG, "ping handle can't be null");
     ep->flags &= ~PING_FLAGS_START;
     return ESP_OK;
 err:
@@ -364,12 +351,16 @@ esp_err_t esp_ping_get_profile(esp_ping_handle_t hdl, esp_ping_profile_t profile
     esp_ping_t *ep = (esp_ping_t *)hdl;
     const void *from = NULL;
     uint32_t copy_size = 0;
-    PING_CHECK(ep, "ping handle can't be null", err, ESP_ERR_INVALID_ARG);
-    PING_CHECK(data, "profile data can't be null", err, ESP_ERR_INVALID_ARG);
+    ESP_GOTO_ON_FALSE(ep, ESP_ERR_INVALID_ARG, err, TAG, "ping handle can't be null");
+    ESP_GOTO_ON_FALSE(data, ESP_ERR_INVALID_ARG, err, TAG, "profile data can't be null");
     switch (profile) {
     case ESP_PING_PROF_SEQNO:
         from = &ep->packet_hdr->seqno;
         copy_size = sizeof(ep->packet_hdr->seqno);
+        break;
+    case ESP_PING_PROF_TOS:
+        from = &ep->tos;
+        copy_size = sizeof(ep->tos);
         break;
     case ESP_PING_PROF_TTL:
         from = &ep->ttl;
@@ -400,10 +391,10 @@ esp_err_t esp_ping_get_profile(esp_ping_handle_t hdl, esp_ping_profile_t profile
         copy_size = sizeof(ep->total_time_ms);
         break;
     default:
-        PING_CHECK(false, "unknow profile: %d", err, ESP_ERR_INVALID_ARG, profile);
+        ESP_GOTO_ON_FALSE(false, ESP_ERR_INVALID_ARG, err, TAG, "unknown profile: %d", profile);
         break;
     }
-    PING_CHECK(size >= copy_size, "unmatched data size for profile %d", err, ESP_ERR_INVALID_SIZE, profile);
+    ESP_GOTO_ON_FALSE(size >= copy_size, ESP_ERR_INVALID_SIZE, err, TAG, "unmatched data size for profile %d", profile);
     memcpy(data, from, copy_size);
     return ESP_OK;
 err:

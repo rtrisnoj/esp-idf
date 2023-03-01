@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Unlicense OR CC0-1.0
+ */
 #include <stdio.h>
 #include <stdbool.h>
 #include <ctype.h>
@@ -126,22 +131,22 @@ static bool fn_in_rom(void *fn)
 
 TEST_CASE("check if ROM or Flash is used for functions", "[newlib]")
 {
-#if defined(CONFIG_NEWLIB_NANO_FORMAT)
+#if CONFIG_NEWLIB_NANO_FORMAT
     TEST_ASSERT(fn_in_rom(vfprintf));
 #else
     TEST_ASSERT_FALSE(fn_in_rom(vfprintf));
 #endif // CONFIG_NEWLIB_NANO_FORMAT
 
-#if defined(CONFIG_IDF_TARGET_ESP32) && defined(CONFIG_NEWLIB_NANO_FORMAT)
+#if CONFIG_NEWLIB_NANO_FORMAT && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32C2 || CONFIG_IDF_TARGET_ESP32H2)
     TEST_ASSERT(fn_in_rom(sscanf));
 #else
     TEST_ASSERT_FALSE(fn_in_rom(sscanf));
-#endif // CONFIG_IDF_TARGET_ESP32 && CONFIG_NEWLIB_NANO_FORMAT
+#endif // CONFIG_NEWLIB_NANO_FORMAT && CONFIG_IDF_TARGET_x
 
 #if defined(CONFIG_IDF_TARGET_ESP32) && !defined(CONFIG_SPIRAM)
     TEST_ASSERT(fn_in_rom(atoi));
     TEST_ASSERT(fn_in_rom(strtol));
-#elif defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32H2)
+#elif defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32H2) || defined(CONFIG_IDF_TARGET_ESP32C2)
     /* S3 and C3 always use these from ROM */
     TEST_ASSERT(fn_in_rom(atoi));
     TEST_ASSERT(fn_in_rom(strtol));

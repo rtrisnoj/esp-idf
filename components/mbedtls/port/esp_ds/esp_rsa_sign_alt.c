@@ -1,19 +1,12 @@
-// Copyright 2020 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2020-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include "esp_ds.h"
 #include "rsa_sign_alt.h"
+#include "esp_memory_utils.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/rom/digital_signature.h"
@@ -31,16 +24,11 @@
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#if !defined(MBEDTLS_CONFIG_FILE)
-#include "mbedtls/config.h"
-#else
-#include MBEDTLS_CONFIG_FILE
-#endif
+#include <mbedtls/build_info.h>
 static const char *TAG = "ESP_RSA_SIGN_ALT";
 #define SWAP_INT32(x) (((x) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | ((x) << 24))
 
 #include "mbedtls/rsa.h"
-#include "mbedtls/rsa_internal.h"
 #include "mbedtls/oid.h"
 #include "mbedtls/platform_util.h"
 #include <string.h>
@@ -70,7 +58,7 @@ void esp_ds_set_session_timeout(int timeout)
     }
 }
 
-esp_err_t  esp_ds_init_data_ctx(esp_ds_data_ctx_t *ds_data)
+esp_err_t esp_ds_init_data_ctx(esp_ds_data_ctx_t *ds_data)
 {
     if (ds_data == NULL || ds_data->esp_ds_data == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -82,8 +70,22 @@ esp_err_t  esp_ds_init_data_ctx(esp_ds_data_ctx_t *ds_data)
     }
     s_ds_data = ds_data->esp_ds_data;
     s_esp_ds_hmac_key_id = (hmac_key_id_t) ds_data->efuse_key_id;
-    /* calculate the rsa_length in terms of esp_digital_signature_length_t which is required for the internal DS API */
-    s_ds_data->rsa_length = (ds_data->rsa_length_bits / 32) - 1;
+
+    const unsigned rsa_length_int = (ds_data->rsa_length_bits / 32) - 1;
+    if (esp_ptr_byte_accessible(s_ds_data)) {
+        /* calculate the rsa_length in terms of esp_digital_signature_length_t which is required for the internal DS API */
+        s_ds_data->rsa_length = rsa_length_int;
+    } else if (s_ds_data->rsa_length != rsa_length_int) {
+        /*
+         * Configuration data is most likely from DROM segment and it
+         * is not properly formatted for all parameters consideration.
+         * Moreover, we can not modify as it is read-only and hence
+         * the error.
+         */
+        ESP_LOGE(TAG, "RSA length mismatch %u, %u", s_ds_data->rsa_length, rsa_length_int);
+        return ESP_ERR_INVALID_ARG;
+    }
+
     return ESP_OK;
 }
 
@@ -215,7 +217,7 @@ static int rsa_rsassa_pkcs1_v15_encode( mbedtls_md_type_t md_alg,
 
 int esp_ds_rsa_sign( void *ctx,
                      int (*f_rng)(void *, unsigned char *, size_t), void *p_rng,
-                     int mode, mbedtls_md_type_t md_alg, unsigned int hashlen,
+                     mbedtls_md_type_t md_alg, unsigned int hashlen,
                      const unsigned char *hash, unsigned char *sig )
 {
     esp_ds_context_t *esp_ds_ctx;

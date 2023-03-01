@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "test_utils.h"
@@ -6,12 +11,15 @@
 #include "lwip/netdb.h"
 #include "lwip/sockets.h"
 #include "ping/ping_sock.h"
+#include "dhcpserver/dhcpserver.h"
 
 #define ETH_PING_END_BIT BIT(1)
 #define ETH_PING_DURATION_MS (5000)
 #define ETH_PING_END_TIMEOUT_MS (ETH_PING_DURATION_MS * 2)
 #define TEST_ICMP_DESTINATION_DOMAIN_NAME "127.0.0.1"
 
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+//IDF-5047
 static void test_on_ping_success(esp_ping_handle_t hdl, void *args)
 {
     uint8_t ttl;
@@ -103,4 +111,34 @@ TEST_CASE("localhost ping test", "[lwip]")
     TEST_ESP_OK(esp_ping_delete_session(ping));
 
     vEventGroupDelete(eth_event_group);
+}
+#endif //!TEMPORARY_DISABLED_FOR_TARGETS(ESP32C2)
+
+TEST_CASE("dhcp server init/deinit", "[lwip][leaks=0]")
+{
+    dhcps_t *dhcps = dhcps_new();
+    TEST_ASSERT_NOT_NULL(dhcps);
+    ip4_addr_t ip = { .addr = IPADDR_ANY };
+    TEST_ASSERT(dhcps_start(dhcps, NULL, ip) == ERR_ARG);
+    TEST_ASSERT(dhcps_stop(dhcps, NULL) == ERR_ARG);
+    dhcps_delete(dhcps);
+}
+
+TEST_CASE("dhcp server start/stop on localhost", "[lwip]")
+{
+    test_case_uses_tcpip();
+    dhcps_t *dhcps = dhcps_new();
+    struct netif *netif;
+
+    NETIF_FOREACH(netif) {
+        if (netif->name[0] == 'l' && netif->name[1] == 'o') {
+            break;
+        }
+    }
+    TEST_ASSERT_NOT_NULL(netif);
+
+    ip4_addr_t ip = { .addr = 0x7f0001 };
+    TEST_ASSERT(dhcps_start(dhcps, netif, ip) == ERR_OK);
+    TEST_ASSERT(dhcps_stop(dhcps, netif) == ERR_OK);
+    dhcps_delete(dhcps);
 }

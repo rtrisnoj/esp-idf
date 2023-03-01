@@ -8,24 +8,36 @@
 #include "esp_mbedtls_dynamic_impl.h"
 
 int __real_mbedtls_ssl_handshake_client_step(mbedtls_ssl_context *ssl);
+int __real_mbedtls_ssl_write_client_hello(mbedtls_ssl_context *ssl);
 
 int __wrap_mbedtls_ssl_handshake_client_step(mbedtls_ssl_context *ssl);
+int __wrap_mbedtls_ssl_write_client_hello(mbedtls_ssl_context *ssl);
 
 static const char *TAG = "SSL client";
 
 static int manage_resource(mbedtls_ssl_context *ssl, bool add)
 {
-    int state = add ? ssl->state : ssl->state - 1;
+    int state = add ? ssl->MBEDTLS_PRIVATE(state) : ssl->MBEDTLS_PRIVATE(state) - 1;
 
-    if (ssl->state == MBEDTLS_SSL_HANDSHAKE_OVER || ssl->handshake == NULL) {
+    if (ssl->MBEDTLS_PRIVATE(state) == MBEDTLS_SSL_HANDSHAKE_OVER || ssl->MBEDTLS_PRIVATE(handshake) == NULL) {
         return 0;
     }
 
     if (!add) {
-        if (!ssl->out_left) {
+        if (!ssl->MBEDTLS_PRIVATE(out_left)) {
             CHECK_OK(esp_mbedtls_free_tx_buffer(ssl));
         }
     }
+
+    /* Change state now, so that it is right in mbedtls_ssl_read_record(), used
+     * by DTLS for dropping out-of-sequence ChangeCipherSpec records */
+#if defined(MBEDTLS_SSL_SESSION_TICKETS)
+    if( ssl->state == MBEDTLS_SSL_SERVER_CHANGE_CIPHER_SPEC &&
+        ssl->handshake->new_session_ticket != 0 )
+    {
+        ssl->state = MBEDTLS_SSL_SERVER_NEW_SESSION_TICKET;
+    }
+#endif
 
     switch (state) {
         case MBEDTLS_SSL_HELLO_REQUEST:
@@ -61,25 +73,25 @@ static int manage_resource(mbedtls_ssl_context *ssl, bool add)
             if (add) {
                 CHECK_OK(esp_mbedtls_add_rx_buffer(ssl));
             } else {
-                if (!ssl->keep_current_message) {
+                if (!ssl->MBEDTLS_PRIVATE(keep_current_message)) {
                     CHECK_OK(esp_mbedtls_free_rx_buffer(ssl));
                 }
             }
             break;
         case MBEDTLS_SSL_CERTIFICATE_REQUEST:
             if (add) {
-                if (!ssl->keep_current_message) {
+                if (!ssl->MBEDTLS_PRIVATE(keep_current_message)) {
                     CHECK_OK(esp_mbedtls_add_rx_buffer(ssl));
                 }
             } else {
-                if (!ssl->keep_current_message) {
+                if (!ssl->MBEDTLS_PRIVATE(keep_current_message)) {
                     CHECK_OK(esp_mbedtls_free_rx_buffer(ssl));
                 }
             }
             break;
         case MBEDTLS_SSL_SERVER_HELLO_DONE:
             if (add) {
-                if (!ssl->keep_current_message) {
+                if (!ssl->MBEDTLS_PRIVATE(keep_current_message)) {
                     CHECK_OK(esp_mbedtls_add_rx_buffer(ssl));
                 }
             } else {
@@ -91,7 +103,7 @@ static int manage_resource(mbedtls_ssl_context *ssl, bool add)
         case MBEDTLS_SSL_CLIENT_CERTIFICATE:
             if (add) {
                 size_t buffer_len = 3;
-                mbedtls_ssl_key_cert *key_cert = ssl->conf->key_cert;
+                mbedtls_ssl_key_cert *key_cert = ssl->MBEDTLS_PRIVATE(conf)->MBEDTLS_PRIVATE(key_cert);
 
                 while (key_cert && key_cert->cert) {
                     size_t num;
@@ -184,6 +196,17 @@ int __wrap_mbedtls_ssl_handshake_client_step(mbedtls_ssl_context *ssl)
     CHECK_OK(manage_resource(ssl, true));
 
     CHECK_OK(__real_mbedtls_ssl_handshake_client_step(ssl));
+
+    CHECK_OK(manage_resource(ssl, false));
+
+    return 0;
+}
+
+int __wrap_mbedtls_ssl_write_client_hello(mbedtls_ssl_context *ssl)
+{
+    CHECK_OK(manage_resource(ssl, true));
+
+    CHECK_OK(__real_mbedtls_ssl_write_client_hello(ssl));
 
     CHECK_OK(manage_resource(ssl, false));
 

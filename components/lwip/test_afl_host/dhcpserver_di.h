@@ -5,7 +5,6 @@
 #include "no_warn_host.h"
 #include "lwip/pbuf.h"
 #include "lwip/udp.h"
-#include "tcpip_adapter.h"
 
 #ifndef BUILDING_DEF
 

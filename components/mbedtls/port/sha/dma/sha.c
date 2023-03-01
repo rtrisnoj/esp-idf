@@ -30,16 +30,17 @@
 #include <sys/lock.h>
 
 #include "esp_log.h"
+#include "esp_memory_utils.h"
 #include "esp_crypto_lock.h"
 #include "esp_attr.h"
 #include "soc/lldesc.h"
-#include "soc/cache_memory.h"
+#include "soc/ext_mem_defs.h"
 #include "soc/periph_defs.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#include "driver/periph_ctrl.h"
+#include "esp_private/periph_ctrl.h"
 #include "sys/param.h"
 
 #include "sha/sha_dma.h"
@@ -55,6 +56,8 @@
 #include "esp32s3/rom/cache.h"
 #elif CONFIG_IDF_TARGET_ESP32H2
 #include "esp32h2/rom/cache.h"
+#elif CONFIG_IDF_TARGET_ESP32C2
+#include "esp32c2/rom/cache.h"
 #endif
 
 #if SOC_SHA_GDMA
@@ -66,6 +69,7 @@
 #endif
 
 const static char *TAG = "esp-sha";
+static bool s_check_dma_capable(const void *p);
 
 /* These are static due to:
  *  * Must be in DMA capable memory, so stack is not a safe place to put them
@@ -223,7 +227,7 @@ int esp_sha_dma(esp_sha_type sha_type, const void *input, uint32_t ilen,
     }
 
     /* DMA cannot access memory in flash, hash block by block instead of using DMA */
-    if (!esp_ptr_dma_ext_capable(input) && !esp_ptr_dma_capable(input) && (ilen != 0)) {
+    if (!s_check_dma_capable(input) && (ilen != 0)) {
         esp_sha_block_mode(sha_type, input, ilen, buf, buf_len, is_first_block);
         return 0;
     }
@@ -238,7 +242,7 @@ int esp_sha_dma(esp_sha_type sha_type, const void *input, uint32_t ilen,
 #endif
 
     /* Copy to internal buf if buf is in non DMA capable memory */
-    if (!esp_ptr_dma_ext_capable(buf) && !esp_ptr_dma_capable(buf) && (buf_len != 0)) {
+    if (!s_check_dma_capable(buf) && (buf_len != 0)) {
         dma_cap_buf = heap_caps_malloc(sizeof(unsigned char) * buf_len, MALLOC_CAP_8BIT|MALLOC_CAP_DMA|MALLOC_CAP_INTERNAL);
         if (dma_cap_buf == NULL) {
             ESP_LOGE(TAG, "Failed to allocate buf memory");
@@ -323,4 +327,15 @@ static esp_err_t esp_sha_dma_process(esp_sha_type sha_type, const void *input, u
     sha_hal_wait_idle();
 
     return ret;
+}
+
+static bool s_check_dma_capable(const void *p)
+{
+    bool is_capable = false;
+#if CONFIG_SPIRAM
+    is_capable |= esp_ptr_dma_ext_capable(p);
+#endif
+    is_capable |= esp_ptr_dma_capable(p);
+
+    return is_capable;
 }

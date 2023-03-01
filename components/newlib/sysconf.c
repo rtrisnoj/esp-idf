@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -7,9 +7,12 @@
 #include <unistd.h>
 #include <errno.h>
 #include "sdkconfig.h"
-#include "freertos/FreeRTOS.h"
 
-#define CPU_NUM portNUM_PROCESSORS
+#ifdef CONFIG_FREERTOS_UNICORE
+#define CPU_NUM 1
+#else
+#define CPU_NUM CONFIG_SOC_CPU_CORES_NUM
+#endif
 
 long sysconf(int arg)
 {
