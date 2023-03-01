@@ -1,16 +1,8 @@
-// Copyright 2015-2021 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -21,12 +13,11 @@
 #include "esp_transport.h"
 #include "esp_transport_tcp.h"
 #include "esp_transport_ws.h"
-#include "esp_transport_utils.h"
 #include "esp_transport_internal.h"
 #include "errno.h"
 #include "esp_tls_crypto.h"
 
-static const char *TAG = "TRANSPORT_WS";
+static const char *TAG = "transport_ws";
 
 #define WS_BUFFER_SIZE              CONFIG_WS_BUFFER_SIZE
 #define WS_FIN                      0x80
@@ -49,6 +40,7 @@ static const char *TAG = "TRANSPORT_WS";
 
 typedef struct {
     uint8_t opcode;
+    bool fin;                           /*!< Frame fin flag, for continuations */
     char mask_key[4];                   /*!< Mask key for this payload */
     int payload_len;                    /*!< Total length of the payload */
     int bytes_remaining;                /*!< Bytes left to read of the payload  */
@@ -109,7 +101,9 @@ static char *trimwhitespace(const char *str)
     char *end;
 
     // Trim leading space
-    while (isspace((unsigned char)*str)) str++;
+    while (isspace((unsigned char)*str)) {
+        str++;
+    }
 
     if (*str == 0) {
         return (char *)str;
@@ -117,7 +111,9 @@ static char *trimwhitespace(const char *str)
 
     // Trim trailing space
     end = (char *)(str + strlen(str) - 1);
-    while (end > str && isspace((unsigned char)*end)) end--;
+    while (end > str && isspace((unsigned char)*end)) {
+        end--;
+    }
 
     // Write new null terminator
     *(end + 1) = 0;
@@ -154,21 +150,30 @@ static int ws_connect(esp_transport_handle_t t, const char *host, int port, int 
     // Size of base64 coded string is equal '((input_size * 4) / 3) + (input_size / 96) + 6' including Z-term
     unsigned char client_key[28] = {0};
 
-    const char *user_agent_ptr = (ws->user_agent)?(ws->user_agent):"ESP32 Websocket Client";
+    const char *user_agent_ptr = (ws->user_agent) ? (ws->user_agent) : "ESP32 Websocket Client";
+#ifdef CONFIG_WS_DYNAMIC_BUFFER
+    if (!ws->buffer) {
+        ws->buffer = malloc(WS_BUFFER_SIZE);
+        if (!ws->buffer) {
+            ESP_LOGE(TAG, "Cannot allocate buffer for connect, need-%d", WS_BUFFER_SIZE);
+            return -1;
+        }
+    }
+#endif
 
     size_t outlen = 0;
     esp_crypto_base64_encode(client_key, sizeof(client_key), &outlen, random_key, sizeof(random_key));
     int len = snprintf(ws->buffer, WS_BUFFER_SIZE,
-                         "GET %s HTTP/1.1\r\n"
-                         "Connection: Upgrade\r\n"
-                         "Host: %s:%d\r\n"
-                         "User-Agent: %s\r\n"
-                         "Upgrade: websocket\r\n"
-                         "Sec-WebSocket-Version: 13\r\n"
-                         "Sec-WebSocket-Key: %s\r\n",
-                         ws->path,
-                         host, port, user_agent_ptr,
-                         client_key);
+                       "GET %s HTTP/1.1\r\n"
+                       "Connection: Upgrade\r\n"
+                       "Host: %s:%d\r\n"
+                       "User-Agent: %s\r\n"
+                       "Upgrade: websocket\r\n"
+                       "Sec-WebSocket-Version: 13\r\n"
+                       "Sec-WebSocket-Key: %s\r\n",
+                       ws->path,
+                       host, port, user_agent_ptr,
+                       client_key);
     if (len <= 0 || len >= WS_BUFFER_SIZE) {
         ESP_LOGE(TAG, "Error in request generation, desired request len: %d, buffer size: %d", len, WS_BUFFER_SIZE);
         return -1;
@@ -179,7 +184,7 @@ static int ws_connect(esp_transport_handle_t t, const char *host, int port, int 
         len += r;
         if (r <= 0 || len >= WS_BUFFER_SIZE) {
             ESP_LOGE(TAG, "Error in request generation"
-                          "(snprintf of subprotocol returned %d, desired request len: %d, buffer size: %d", r, len, WS_BUFFER_SIZE);
+                     "(snprintf of subprotocol returned %d, desired request len: %d, buffer size: %d", r, len, WS_BUFFER_SIZE);
             return -1;
         }
     }
@@ -189,7 +194,7 @@ static int ws_connect(esp_transport_handle_t t, const char *host, int port, int 
         len += r;
         if (r <= 0 || len >= WS_BUFFER_SIZE) {
             ESP_LOGE(TAG, "Error in request generation"
-                          "(strncpy of headers returned %d, desired request len: %d, buffer size: %d", r, len, WS_BUFFER_SIZE);
+                     "(strncpy of headers returned %d, desired request len: %d, buffer size: %d", r, len, WS_BUFFER_SIZE);
             return -1;
         }
     }
@@ -197,7 +202,7 @@ static int ws_connect(esp_transport_handle_t t, const char *host, int port, int 
     len += r;
     if (r <= 0 || len >= WS_BUFFER_SIZE) {
         ESP_LOGE(TAG, "Error in request generation"
-                       "(snprintf of header terminal returned %d, desired request len: %d, buffer size: %d", r, len, WS_BUFFER_SIZE);
+                 "(snprintf of header terminal returned %d, desired request len: %d, buffer size: %d", r, len, WS_BUFFER_SIZE);
         return -1;
     }
     ESP_LOGD(TAG, "Write upgrade request\r\n%s", ws->buffer);
@@ -229,18 +234,22 @@ static int ws_connect(esp_transport_handle_t t, const char *host, int port, int 
     // If you are interested, see https://tools.ietf.org/html/rfc6455
     const char expected_server_magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     unsigned char expected_server_text[sizeof(client_key) + sizeof(expected_server_magic) + 1];
-    strcpy((char*)expected_server_text, (char*)client_key);
-    strcat((char*)expected_server_text, expected_server_magic);
+    strcpy((char *)expected_server_text, (char *)client_key);
+    strcat((char *)expected_server_text, expected_server_magic);
 
-    size_t key_len = strlen((char*)expected_server_text);
+    size_t key_len = strlen((char *)expected_server_text);
     esp_crypto_sha1(expected_server_text, key_len, expected_server_sha1);
     esp_crypto_base64_encode(expected_server_key, sizeof(expected_server_key),  &outlen, expected_server_sha1, sizeof(expected_server_sha1));
     expected_server_key[ (outlen < sizeof(expected_server_key)) ? outlen : (sizeof(expected_server_key) - 1) ] = 0;
-    ESP_LOGD(TAG, "server key=%s, send_key=%s, expected_server_key=%s", (char *)server_key, (char*)client_key, expected_server_key);
-    if (strcmp((char*)expected_server_key, (char*)server_key) != 0) {
+    ESP_LOGD(TAG, "server key=%s, send_key=%s, expected_server_key=%s", (char *)server_key, (char *)client_key, expected_server_key);
+    if (strcmp((char *)expected_server_key, (char *)server_key) != 0) {
         ESP_LOGE(TAG, "Invalid websocket key");
         return -1;
     }
+#ifdef CONFIG_WS_DYNAMIC_BUFFER
+    free(ws->buffer);
+    ws->buffer = NULL;
+#endif
     return 0;
 }
 
@@ -300,7 +309,7 @@ static int _ws_write(esp_transport_handle_t t, int opcode, int mask_flag, const 
     // in case of masked transport we have to revert back to the original data, as ws layer
     // does not create its own copy of data to be sent
     if (mask_flag) {
-        mask = &ws_header[header_len-4];
+        mask = &ws_header[header_len - 4];
         for (i = 0; i < len; ++i) {
             buffer[i] = (buffer[i] ^ mask[i % 4]);
         }
@@ -386,6 +395,7 @@ static int ws_read_header(esp_transport_handle_t t, char *buffer, int len, int t
         return rlen;
     }
     ws->frame_state.header_received = true;
+    ws->frame_state.fin = (*data_ptr & 0x80) != 0;
     ws->frame_state.opcode = (*data_ptr & 0x0F);
     data_ptr ++;
     mask = ((*data_ptr >> 7) & 0x01);
@@ -443,7 +453,7 @@ static int ws_handle_control_frame_internal(esp_transport_handle_t t, int timeou
     // If no new header reception in progress, or not a control frame
     // just pass 0 -> no need to handle control frames
     if (ws->frame_state.header_received == false ||
-        !(ws->frame_state.opcode & WS_OPCODE_CONTROL_FRAME)) {
+            !(ws->frame_state.opcode & WS_OPCODE_CONTROL_FRAME)) {
         return 0;
     }
 
@@ -499,7 +509,7 @@ static int ws_read(esp_transport_handle_t t, char *buffer, int len, int timeout_
         // If the new opcode is a control frame and we don't pass it to the app
         //  - try to handle it internally using the application buffer
         if (ws->frame_state.header_received && (ws->frame_state.opcode & WS_OPCODE_CONTROL_FRAME) &&
-            ws->propagate_control_frames == false) {
+                ws->propagate_control_frames == false) {
             // automatically handle only 0 payload frames and make the transport read to return 0 on success
             // which might be interpreted as timeouts
             return ws_handle_control_frame_internal(t, timeout_ms);
@@ -593,13 +603,22 @@ static int ws_get_socket(esp_transport_handle_t t)
 
 esp_transport_handle_t esp_transport_ws_init(esp_transport_handle_t parent_handle)
 {
+    if (parent_handle == NULL || parent_handle->foundation == NULL) {
+      ESP_LOGE(TAG, "Invalid parent ptotocol");
+      return NULL;
+    }
     esp_transport_handle_t t = esp_transport_init();
     if (t == NULL) {
         return NULL;
     }
     transport_ws_t *ws = calloc(1, sizeof(transport_ws_t));
-    ESP_TRANSPORT_MEM_CHECK(TAG, ws, return NULL);
+    ESP_TRANSPORT_MEM_CHECK(TAG, ws, {
+        esp_transport_destroy(t);
+        return NULL;
+    });
     ws->parent = parent_handle;
+    t->foundation = parent_handle->foundation;
+
 
     ws->path = strdup("/");
     ESP_TRANSPORT_MEM_CHECK(TAG, ws->path, {
@@ -712,6 +731,12 @@ esp_err_t esp_transport_ws_set_config(esp_transport_handle_t t, const esp_transp
     return err;
 }
 
+bool esp_transport_ws_get_fin_flag(esp_transport_handle_t t)
+{
+  transport_ws_t *ws = esp_transport_get_context_data(t);
+  return ws->frame_state.fin;
+}
+
 ws_transport_opcodes_t esp_transport_ws_get_read_opcode(esp_transport_handle_t t)
 {
     transport_ws_t *ws = esp_transport_get_context_data(t);
@@ -735,7 +760,7 @@ static int esp_transport_ws_handle_control_frames(esp_transport_handle_t t, char
     // If no new header reception in progress, or not a control frame
     // just pass 0 -> no need to handle control frames
     if (ws->frame_state.header_received == false ||
-        !(ws->frame_state.opcode & WS_OPCODE_CONTROL_FRAME)) {
+            !(ws->frame_state.opcode & WS_OPCODE_CONTROL_FRAME)) {
         return 0;
     }
     int actual_len;
@@ -771,7 +796,7 @@ static int esp_transport_ws_handle_control_frames(esp_transport_handle_t t, char
 
         if (client_closed == false) {
             // Only echo the closing frame if not initiated by the client
-            if (_ws_write(t, WS_OPCODE_CLOSE | WS_FIN, WS_MASK, NULL,0, timeout_ms) < 0) {
+            if (_ws_write(t, WS_OPCODE_CLOSE | WS_FIN, WS_MASK, NULL, 0, timeout_ms) < 0) {
                 ESP_LOGE(TAG, "Sending CLOSE frame with 0 payload failed");
                 return -1;
             }

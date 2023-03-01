@@ -1,44 +1,17 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.16)
 
-include(${IDF_PATH}/tools/cmake/utilities.cmake)
+include(${IDF_PATH}/tools/cmake/idf.cmake)
 project(${ULP_APP_NAME} ASM C)
 
 option(ULP_COCPU_IS_RISCV "Use RISC-V based ULP" OFF)
 
-set(version_pattern "[a-z0-9\.-]+")
-
-# Check assembler version
-execute_process(
-    COMMAND ${CMAKE_ASM_COMPILER} --version
-    OUTPUT_VARIABLE as_output
-    ERROR_QUIET)
-
-string(REGEX MATCH "\\(GNU Binutils\\) (${version_pattern})" as_version ${as_output})
-set(as_version ${CMAKE_MATCH_1})
-
-
 message(STATUS "Building ULP app ${ULP_APP_NAME}")
 
 if(ULP_COCPU_IS_RISCV)
-    set(ULP_LD_TEMPLATE ${IDF_PATH}/components/ulp/ld/esp32s2.ulp.riscv.ld)
+    set(ULP_LD_TEMPLATE ${IDF_PATH}/components/ulp/ld/ulp_riscv.ld)
 else()
-    message(STATUS "ULP assembler version: ${as_version}")
-
-    # Check the supported assembler version
-    file(STRINGS ${IDF_PATH}/components/ulp/toolchain_ulp_version.mk version_file_contents)
-    string(REGEX MATCH
-        "SUPPORTED_ULP_ASSEMBLER_VERSION = (${version_pattern})"
-        as_supported_version
-        ${version_file_contents})
-    set(as_supported_version ${CMAKE_MATCH_1})
-
-    if(NOT as_version STREQUAL as_supported_version)
-        message(WARNING "WARNING: ULP assembler version ${as_version} is not supported. Expected to see version: \
-                        ${as_supported_version}. Please check ESP-IDF ULP setup instructions and update \
-                        the toolchain, or proceed at your own risk.")
-    endif()
-
-    set(ULP_LD_TEMPLATE ${IDF_PATH}/components/ulp/ld/esp32.ulp.ld)
+    check_expected_tool_version("esp32ulp-elf" ${CMAKE_ASM_COMPILER})
+    set(ULP_LD_TEMPLATE ${IDF_PATH}/components/ulp/ld/ulp_fsm.ld)
 endif()
 
 
@@ -68,11 +41,16 @@ add_custom_target(${ULP_APP_NAME}_ld_script
                   DEPENDS ${ULP_LD_SCRIPT}
                   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+# To avoid warning "Manually-specified variables were not used by the project"
+set(bypassWarning "${IDF_TARGET}")
 if(ULP_COCPU_IS_RISCV)
     #risc-v ulp uses extra files for building:
     list(APPEND ULP_S_SOURCES
-        "${IDF_PATH}/components/ulp/ulp_riscv/start.S"
-        "${IDF_PATH}/components/ulp/ulp_riscv/ulp_riscv_utils.c")
+        "${IDF_PATH}/components/ulp/ulp_riscv/ulp_core/start.S"
+        "${IDF_PATH}/components/ulp/ulp_riscv/ulp_core/ulp_riscv_adc.c"
+        "${IDF_PATH}/components/ulp/ulp_riscv/ulp_core/ulp_riscv_uart.c"
+        "${IDF_PATH}/components/ulp/ulp_riscv/ulp_core/ulp_riscv_print.c"
+        "${IDF_PATH}/components/ulp/ulp_riscv/ulp_core/ulp_riscv_utils.c")
 
     #dummy loop to force pre-processed linker file generation:
     foreach(ulp_s_source ${ULP_S_SOURCES})
@@ -95,7 +73,9 @@ if(ULP_COCPU_IS_RISCV)
     list(APPEND EXTRA_LINKER_ARGS "-Wl,--gc-sections")
     list(APPEND EXTRA_LINKER_ARGS "-Wl,-Map=\"${CMAKE_CURRENT_BINARY_DIR}/${ULP_APP_NAME}.map\"")
     #Makes the csr utillies for riscv visible:
-    target_include_directories(${ULP_APP_NAME} PRIVATE "${IDF_PATH}/components/ulp/ulp_riscv/include")
+    target_include_directories(${ULP_APP_NAME} PRIVATE "${IDF_PATH}/components/ulp/ulp_riscv/ulp_core/include")
+    target_link_libraries(${ULP_APP_NAME} "-T \"${IDF_PATH}/components/ulp/ld/${IDF_TARGET}.periperals.ld\"")
+    target_compile_definitions(${ULP_APP_NAME} PRIVATE IS_ULP_COCPU)
 
 else()
 

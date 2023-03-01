@@ -1,21 +1,12 @@
-// Copyright 2017-2021 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-#ifndef _SOC_I2S_STRUCT_H_
-#define _SOC_I2S_STRUCT_H_
-
+/*
+ * SPDX-FileCopyrightText: 2017-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+#pragma once
 
 #include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -205,7 +196,7 @@ typedef volatile struct i2s_dev_s {
             uint32_t reserved26                    :    6;  /*Reserved*/
         };
         uint32_t val;
-    } tx_pcm2pdm_conf;
+    } tx_pcm2pdm_conf; // Only available on I2S0
     union {
         struct {
             uint32_t tx_pdm_fp                     :    10;  /*I2S TX PDM Fp*/
@@ -215,7 +206,7 @@ typedef volatile struct i2s_dev_s {
             uint32_t reserved26                    :    6;  /*Reserved*/
         };
         uint32_t val;
-    } tx_pcm2pdm_conf1;
+    } tx_pcm2pdm_conf1; // Only available on I2S0
     uint32_t reserved_48;
     uint32_t reserved_4c;
     union {
@@ -344,7 +335,3 @@ extern i2s_dev_t I2S1;
 #ifdef __cplusplus
 }
 #endif
-
-
-
-#endif /*_SOC_I2S_STRUCT_H_ */

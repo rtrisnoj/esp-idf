@@ -13,7 +13,6 @@
 #include "md5_i.h"
 #include "crypto.h"
 
-#if 0  // Provided by ROM
 
 static void MD5Transform(u32 buf[4], u32 const in[16]);
 
@@ -289,5 +288,3 @@ static void MD5Transform(u32 buf[4], u32 const in[16])
     buf[3] += d;
 }
 /* ===== end - public domain MD5 implementation ===== */
-
-#endif

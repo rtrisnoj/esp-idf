@@ -280,6 +280,8 @@ enum SIG_WPA2 {
 struct eap_sm {
 	/* not defined in RFC 4137 */
 	Boolean changed;
+	void *eapol_ctx;
+	const struct eapol_callbacks *eapol_cb;
 	void *eap_method_priv;
 	int init_phase2;
 
@@ -329,6 +331,7 @@ int eap_get_config_fragment_size(struct eap_sm *sm);
 struct eap_peer_config * eap_get_config(struct eap_sm *sm);
 void eap_set_config_blob(struct eap_sm *sm, struct wpa_config_blob *blob);
 const struct wpa_config_blob * eap_get_config_blob(struct eap_sm *sm, const char *name);
+int eap_allowed_method(struct eap_sm *sm, int vendor, u32 method);
 bool wifi_sta_get_enterprise_disable_time_check(void);
 
 struct wpabuf * eap_sm_build_identity_resp(struct eap_sm *sm, u8 id, int encrypted);

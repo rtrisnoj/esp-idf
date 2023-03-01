@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -21,6 +21,11 @@
 #include "esp_vfs_private.h"
 #include "sdkconfig.h"
 
+// Warn about using deprecated option
+#ifdef CONFIG_LWIP_USE_ONLY_LWIP_SELECT
+#warning CONFIG_LWIP_USE_ONLY_LWIP_SELECT is deprecated: Please use CONFIG_VFS_SUPPORT_SELECT instead
+#endif
+
 #ifdef CONFIG_VFS_SUPPRESS_SELECT_DEBUG_OUTPUT
 #define LOG_LOCAL_LEVEL ESP_LOG_NONE
 #endif //CONFIG_VFS_SUPPRESS_SELECT_DEBUG_OUTPUT
@@ -32,7 +37,7 @@ static const char *TAG = "vfs";
 #define LEN_PATH_PREFIX_IGNORED SIZE_MAX /* special length value for VFS which is never recognised by open() */
 #define FD_TABLE_ENTRY_UNUSED   (fd_table_t) { .permanent = false, .has_pending_close = false, .has_pending_select = false, .vfs_index = -1, .local_fd = -1 }
 
-typedef uint16_t local_fd_t;
+typedef uint8_t local_fd_t;
 _Static_assert((1 << (sizeof(local_fd_t)*8)) >= MAX_FDS, "file descriptor type too small");
 
 typedef int8_t vfs_index_t;
@@ -127,8 +132,8 @@ esp_err_t esp_vfs_register_fd_range(const esp_vfs_t *vfs, void *ctx, int min_fd,
         _lock_acquire(&s_fd_table_lock);
         for (int i = min_fd; i < max_fd; ++i) {
             if (s_fd_table[i].vfs_index != -1) {
-                free(s_vfs[i]);
-                s_vfs[i] = NULL;
+                free(s_vfs[index]);
+                s_vfs[index] = NULL;
                 for (int j = min_fd; j < i; ++j) {
                     if (s_fd_table[j].vfs_index == index) {
                         s_fd_table[j] = FD_TABLE_ENTRY_UNUSED;
@@ -143,9 +148,9 @@ esp_err_t esp_vfs_register_fd_range(const esp_vfs_t *vfs, void *ctx, int min_fd,
             s_fd_table[i].local_fd = i;
         }
         _lock_release(&s_fd_table_lock);
-    }
 
-    ESP_LOGD(TAG, "esp_vfs_register_fd_range is successful for range <%d; %d) and VFS ID %d", min_fd, max_fd, index);
+        ESP_LOGW(TAG, "esp_vfs_register_fd_range is successful for range <%d; %d) and VFS ID %d", min_fd, max_fd, index);
+    }
 
     return ret;
 }
@@ -162,7 +167,7 @@ esp_err_t esp_vfs_register_with_id(const esp_vfs_t *vfs, void *ctx, esp_vfs_id_t
 
 esp_err_t esp_vfs_unregister_with_id(esp_vfs_id_t vfs_id)
 {
-    if (vfs_id < 0 || vfs_id >= MAX_FDS || s_vfs[vfs_id] == NULL) {
+    if (vfs_id < 0 || vfs_id >= VFS_MAX_COUNT || s_vfs[vfs_id] == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
     vfs_entry_t* vfs = s_vfs[vfs_id];
@@ -289,18 +294,6 @@ static inline int get_local_fd(const vfs_entry_t *vfs, int fd)
     }
 
     return local_fd;
-}
-
-int esp_vfs_translate_fd(int fd, void **pctx)
-{
-    const vfs_entry_t* vfs = get_vfs_for_fd(fd);
-    if (vfs == NULL) {
-        return -1;
-    }
-    if (pctx != NULL) {
-        *pctx = vfs->ctx;
-    }
-    return get_local_fd(vfs, fd);
 }
 
 static const char* translate_path(const vfs_entry_t* vfs, const char* src_path)
@@ -1065,8 +1058,16 @@ int esp_vfs_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *errorfds
     if (ret >= 0) {
         ret += set_global_fd_sets(vfs_fds_triple, vfs_count, readfds, writefds, errorfds);
     }
-    if (sel_sem.is_sem_local && sel_sem.sem) {
-        vSemaphoreDelete(sel_sem.sem);
+    if (sel_sem.sem) { // Cleanup the select semaphore
+        if (sel_sem.is_sem_local) {
+            vSemaphoreDelete(sel_sem.sem);
+        } else if (socket_select) {
+            SemaphoreHandle_t *s = sel_sem.sem;
+            /* Select might have been triggered from both lwip and vfs fds at the same time, and
+             * we have to make sure that the lwip semaphore is cleared when we exit select().
+             * It is safe, as the semaphore belongs to the calling thread. */
+            xSemaphoreTake(*s, 0);
+        }
         sel_sem.sem = NULL;
     }
     _lock_acquire(&s_fd_table_lock);

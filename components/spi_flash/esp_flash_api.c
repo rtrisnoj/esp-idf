@@ -1,43 +1,27 @@
-// Copyright 2015-2019 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/param.h>
 #include <string.h>
 
+#include "esp_memory_utils.h"
 #include "spi_flash_chip_driver.h"
 #include "memspi_host_driver.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
 #include "esp_flash_internal.h"
 #include "spi_flash_defs.h"
+#include "spi_flash_mmap.h"
 #include "esp_rom_caps.h"
+#include "esp_rom_spiflash.h"
 #if CONFIG_IDF_TARGET_ESP32S2
 #include "esp_crypto_lock.h" // for locking flash encryption peripheral
 #endif //CONFIG_IDF_TARGET_ESP32S2
-#if CONFIG_IDF_TARGET_ESP32
-#include "esp32/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32S2
-#include "esp32s2/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32S3
-#include "esp32s3/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32C3
-#include "esp32c3/rom/spi_flash.h"
-#elif CONFIG_IDF_TARGET_ESP32H2
-#include "esp32h2/rom/spi_flash.h"
-#endif
 
 static const char TAG[] = "spi_flash";
 
@@ -271,12 +255,14 @@ esp_err_t IRAM_ATTR esp_flash_init_main(esp_flash_t *chip)
     // 3. Get basic parameters of the chip (size, dummy count, etc.)
     // 4. Init chip into desired mode (without breaking the cache!)
     esp_err_t err = ESP_OK;
-    bool octal_mode = (chip->read_mode >= SPI_FLASH_OPI_FLAG);
+    bool octal_mode;
+
     if (chip == NULL || chip->host == NULL || chip->host->driver == NULL ||
         ((memspi_host_inst_t*)chip->host)->spi == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    octal_mode = (chip->read_mode >= SPI_FLASH_OPI_FLAG);
     //read chip id
     // This can indicate the MSPI support OPI, if the flash works on MSPI in OPI mode, we directly bypass read id.
     uint32_t flash_id = 0;
@@ -798,7 +784,11 @@ esp_err_t IRAM_ATTR esp_flash_read(esp_flash_t *chip, void *buffer, uint32_t add
     }
 
     //when the cache is disabled, only the DRAM can be read, check whether we need to receive in another buffer in DRAM.
-    bool direct_read = chip->host->driver->supports_direct_read(chip->host, buffer);
+    bool direct_read = false;
+    //If the buffer is internal already, it's ok to use it directly
+    direct_read |= esp_ptr_in_dram(buffer);
+    //If not, we need to check if the HW support direct write
+    direct_read |= chip->host->driver->supports_direct_read(chip->host, buffer);
     uint8_t* temp_buffer = NULL;
 
     //each time, we at most read this length
@@ -866,7 +856,11 @@ esp_err_t IRAM_ATTR esp_flash_write(esp_flash_t *chip, const void *buffer, uint3
     }
 
     //when the cache is disabled, only the DRAM can be read, check whether we need to copy the data first
-    bool direct_write = chip->host->driver->supports_direct_write(chip->host, buffer);
+    bool direct_write = false;
+    //If the buffer is internal already, it's ok to write it directly
+    direct_write |= esp_ptr_in_dram(buffer);
+    //If not, we need to check if the HW support direct write
+    direct_write |= chip->host->driver->supports_direct_write(chip->host, buffer);
 
     // Indicate whether the bus is acquired by the driver, needs to be released before return
     bool bus_acquired = false;
@@ -1058,19 +1052,32 @@ inline static IRAM_ATTR bool regions_overlap(uint32_t a_start, uint32_t a_len,ui
     return (a_end > b_start && b_end > a_start);
 }
 
-//currently the legacy implementation is used, from flash_ops.c
-esp_err_t spi_flash_read_encrypted(size_t src, void *dstv, size_t size);
-
 esp_err_t IRAM_ATTR esp_flash_read_encrypted(esp_flash_t *chip, uint32_t address, void *out_buffer, uint32_t length)
 {
-    /*
-     * Since currently this feature is supported only by the hardware, there
-     * is no way to support non-standard chips. We use the legacy
-     * implementation and skip the chip and driver layers.
-     */
     esp_err_t err = rom_spiflash_api_funcs->chip_check(&chip);
     if (err != ESP_OK) return err;
-    return spi_flash_read_encrypted(address, out_buffer, length);
+    if (address + length > g_rom_flashchip.chip_size) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    if (length == 0) {
+        return ESP_OK;
+    }
+    if (out_buffer == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const uint8_t *map;
+    spi_flash_mmap_handle_t map_handle;
+    size_t map_src = address & ~(SPI_FLASH_MMU_PAGE_SIZE - 1);
+    size_t map_size = length + (address - map_src);
+
+    err = spi_flash_mmap(map_src, map_size, SPI_FLASH_MMAP_DATA, (const void **)&map, &map_handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+    memcpy(out_buffer, map + (address - map_src), length);
+    spi_flash_munmap(map_handle);
+    return err;
 }
 
 // test only, non-public
@@ -1122,7 +1129,6 @@ esp_err_t esp_flash_suspend_cmd_init(esp_flash_t* chip)
     return chip->chip_drv->sus_setup(chip);
 }
 
-#ifndef CONFIG_SPI_FLASH_USE_LEGACY_IMPL
 esp_err_t esp_flash_app_disable_protect(bool disable)
 {
     if (disable) {
@@ -1131,65 +1137,3 @@ esp_err_t esp_flash_app_disable_protect(bool disable)
         return esp_flash_app_enable_os_functions(esp_flash_default_chip);
     }
 }
-#endif
-
-/*------------------------------------------------------------------------------
-    Adapter layer to original api before IDF v4.0
-------------------------------------------------------------------------------*/
-
-#ifndef CONFIG_SPI_FLASH_USE_LEGACY_IMPL
-
-/* Translate any ESP_ERR_FLASH_xxx error code (new API) to a generic ESP_ERR_xyz error code
- */
-static IRAM_ATTR esp_err_t spi_flash_translate_rc(esp_err_t err)
-{
-    switch (err) {
-        case ESP_OK:
-        case ESP_ERR_INVALID_ARG:
-        case ESP_ERR_INVALID_SIZE:
-        case ESP_ERR_NO_MEM:
-            return err;
-
-        case ESP_ERR_FLASH_NOT_INITIALISED:
-        case ESP_ERR_FLASH_PROTECTED:
-            return ESP_ERR_INVALID_STATE;
-
-        case ESP_ERR_NOT_FOUND:
-        case ESP_ERR_FLASH_UNSUPPORTED_HOST:
-        case ESP_ERR_FLASH_UNSUPPORTED_CHIP:
-            return ESP_ERR_NOT_SUPPORTED;
-
-        case ESP_ERR_FLASH_NO_RESPONSE:
-            return ESP_ERR_INVALID_RESPONSE;
-
-        default:
-            ESP_EARLY_LOGE(TAG, "unexpected spi flash error code: 0x%x", err);
-            abort();
-    }
-}
-
-esp_err_t IRAM_ATTR spi_flash_erase_range(uint32_t start_addr, uint32_t size)
-{
-    esp_err_t err = esp_flash_erase_region(NULL, start_addr, size);
-    return spi_flash_translate_rc(err);
-}
-
-esp_err_t IRAM_ATTR spi_flash_write(size_t dst, const void *srcv, size_t size)
-{
-    esp_err_t err = esp_flash_write(NULL, srcv, dst, size);
-    return spi_flash_translate_rc(err);
-}
-
-esp_err_t IRAM_ATTR spi_flash_read(size_t src, void *dstv, size_t size)
-{
-    esp_err_t err = esp_flash_read(NULL, dstv, src, size);
-    return spi_flash_translate_rc(err);
-}
-
-esp_err_t IRAM_ATTR spi_flash_write_encrypted(size_t dest_addr, const void *src, size_t size)
-{
-    esp_err_t err = esp_flash_write_encrypted(NULL, dest_addr, src, size);
-    return spi_flash_translate_rc(err);
-}
-
-#endif // CONFIG_SPI_FLASH_USE_LEGACY_IMPL

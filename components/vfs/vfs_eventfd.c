@@ -1,16 +1,8 @@
-// Copyright 2021 Espressif Systems (Shanghai) CO LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License
+/*
+ * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 
 #include "esp_vfs_eventfd.h"
@@ -29,7 +21,7 @@
 #include "esp_vfs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
-#include "soc/spinlock.h"
+#include "spinlock.h"
 
 #define FD_INVALID -1
 #define FD_PENDING_SELECT -2
@@ -69,7 +61,7 @@ typedef struct {
     event_select_args_t     *select_args;
     _lock_t                 lock;
     // only for event fds that support ISR.
-    spinlock_t              data_spin_lock;
+    portMUX_TYPE            data_spin_lock;
 } event_context_t;
 
 esp_vfs_id_t s_eventfd_vfs_id = -1;
@@ -429,7 +421,7 @@ int eventfd(unsigned int initval, int flags)
             fd = i;
             s_events[i].fd = i;
             s_events[i].support_isr = support_isr;
-            spinlock_initialize(&s_events[i].data_spin_lock);
+            portMUX_INITIALIZE(&s_events[i].data_spin_lock);
 
             if (support_isr) {
                 portENTER_CRITICAL(&s_events[i].data_spin_lock);

@@ -71,8 +71,11 @@ typedef struct {
     // Read and write locks, lazily initialized
     _lock_t read_lock;
     _lock_t write_lock;
-    // Non-blocking flag. Note: default implementation does not honor this
-    // flag, all reads are non-blocking. ToDo: implement driver that honours this.
+    // Non-blocking flag.
+    // The default implementation does not honor this flag, all reads
+    // are non-blocking.
+    // When the driver is used (via esp_vfs_usb_serial_jtag_use_driver),
+    // reads are either blocking or non-blocking depending on this flag.
     bool non_blocking;
     // Newline conversion mode when transmitting
     esp_line_endings_t tx_mode;
@@ -242,6 +245,7 @@ static int usb_serial_jtag_fcntl(int fd, int cmd, int arg)
 {
     int result = 0;
     if (cmd == F_GETFL) {
+        result |= O_RDWR;
         if (s_ctx.non_blocking) {
             result |= O_NONBLOCK;
         }
@@ -389,7 +393,8 @@ esp_err_t esp_vfs_dev_usb_serial_jtag_register(void)
 static int usbjtag_rx_char_via_driver(int fd)
 {
     uint8_t c;
-    int n = usb_serial_jtag_read_bytes(&c, 1, portMAX_DELAY);
+    TickType_t timeout = s_ctx.non_blocking ? 0 : portMAX_DELAY;
+    int n = usb_serial_jtag_read_bytes(&c, 1, timeout);
     if (n <= 0) {
         return NONE;
     }

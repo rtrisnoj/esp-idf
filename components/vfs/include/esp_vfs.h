@@ -234,7 +234,7 @@ typedef struct
         int (*tcsendbreak)(int fd, int duration);                                                   /*!< tcsendbreak without context pointer */
     };
 #endif // CONFIG_VFS_SUPPORT_TERMIOS
-#ifdef CONFIG_VFS_SUPPORT_SELECT
+#if CONFIG_VFS_SUPPORT_SELECT || defined __DOXYGEN__
     /** start_select is called for setting up synchronous I/O multiplexing of the desired file descriptors in the given VFS */
     esp_err_t (*start_select)(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, esp_vfs_select_sem_t sem, void **end_select_args);
     /** socket select function for socket FDs with the functionality of POSIX select(); this should be set only for the socket VFS */
@@ -247,7 +247,7 @@ typedef struct
     void* (*get_socket_select_semaphore)(void);
     /** get_socket_select_semaphore returns semaphore allocated in the socket driver; set only for the socket driver */
     esp_err_t (*end_select)(void *end_select_args);
-#endif // CONFIG_VFS_SUPPORT_SELECT
+#endif // CONFIG_VFS_SUPPORT_SELECT || defined __DOXYGEN__
 } esp_vfs_t;
 
 /**
@@ -462,24 +462,6 @@ ssize_t esp_vfs_pread(int fd, void *dst, size_t size, off_t offset);
  *                   set accordingly.
  */
 ssize_t esp_vfs_pwrite(int fd, const void *src, size_t size, off_t offset);
-
-/**
- * Translate given vfs file descriptor to the underlying file descriptor.
- *
- * If given pctx is not NULL, then the ctx corresponding to the appropriate
- * mount point will be written to it.
- *
- * If the given descriptor is invalid, then -1 is returned, and `pctx` is left
- * intact.
- *
- * @param fd  Vfs file descriptor.
- * @param pctx  Pointer to the application-dependent context pointer. If not
- *              NULL, then the context corresponding to the appropriate mount
- *              point will be written to it.
- *
- * @return  Underlying file descriptor, or -1 in case of an error.
- */
-int esp_vfs_translate_fd(int fd, void **pctx);
 
 #ifdef __cplusplus
 } // extern "C"
